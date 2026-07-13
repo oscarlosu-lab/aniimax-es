@@ -31,10 +31,12 @@ function renderFacilityCards() {
                         <label for="facility-${f.slug}-count">Count</label>
                         <input type="number" id="facility-${f.slug}-count" value="${f.defaultCount}" min="0" max="20">
                     </div>
+                    ${f.hasLevels === false ? '' : `
                     <div class="input-field">
                         <label for="facility-${f.slug}-level">Level</label>
                         <input type="number" id="facility-${f.slug}-level" value="1" min="1" max="10">
                     </div>
+                    `}
                 </div>
             </div>
         `).join('');
@@ -65,7 +67,9 @@ function getPersistedFieldIds() {
         'ecological-module-level', 'kitchen-module-level',
         'mineral-detector-level', 'crafting-module-level'
     ];
-    const facilityIds = FACILITIES.flatMap(f => [`facility-${f.slug}-count`, `facility-${f.slug}-level`]);
+    const facilityIds = FACILITIES.flatMap(f => f.hasLevels === false
+        ? [`facility-${f.slug}-count`]
+        : [`facility-${f.slug}-count`, `facility-${f.slug}-level`]);
     return [...staticIds, ...facilityIds];
 }
 
@@ -155,7 +159,9 @@ function getPlanInputValues() {
             // NaN-safe (not `|| fallback`): 0 is a legitimate "I don't own this facility" value,
             // but `0 || f.defaultCount` would silently replace it with the default (often 1).
             count: numberOrDefault(document.getElementById(`facility-${f.slug}-count`).value, f.defaultCount),
-            level: numberOrDefault(document.getElementById(`facility-${f.slug}-level`).value, 1)
+            // Facilities that don't level up (hasLevels: false) have no Level input at all; always
+            // send level 1, which is what the game data assumes for them regardless.
+            level: f.hasLevels === false ? 1 : numberOrDefault(document.getElementById(`facility-${f.slug}-level`).value, 1)
         };
     });
 

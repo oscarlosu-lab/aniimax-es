@@ -6,7 +6,9 @@
 // the JSON key for each facility's count/level. Add new facilities here only; cards and input
 // handling are generated dynamically, no other file needs to change. `category` groups the cards
 // in the UI (see `FACILITY_CATEGORIES` below for display order) and mirrors the user-provided
-// facility list in BETA_NOTES.md section 11.
+// facility list in BETA_NOTES.md section 11. `hasLevels: false` hides the Level input entirely
+// for facilities that don't level up in-game (confirmed against the game directly) — omit the
+// field (defaults to leveled) for any facility that does.
 export const FACILITIES = [
     {
         name: 'Farmland', slug: 'farmland', defaultCount: 1, category: 'Materials',
@@ -21,24 +23,24 @@ export const FACILITIES = [
         tooltip: "Lv.1: shell, quick shell&#10;Lv.2: clay&#10;Lv.3: quartz, quick quartz&#10;Lv.4: gem&#10;Currently the only confirmed source of Mineral Sand. (Times are estimated from workload, see BETA_NOTES.md)"
     },
     {
-        name: 'Nimbus Bed', slug: 'nimbus-bed', defaultCount: 0, category: 'Aniimo Materials',
-        tooltip: "Requires a matching Aniimo Family (Nimbi for Wool, Iris for Petals)&#10;Produces: wool (4), petals (6) per batch"
+        name: 'Nimbus Bed', slug: 'nimbus-bed', defaultCount: 0, category: 'Aniimo Materials', hasLevels: false,
+        tooltip: "Requires a matching Aniimo Family (Nimbi for Wool, Iris for Petals)&#10;Produces: wool (4), petals (6) per batch&#10;Doesn't level up"
     },
     {
-        name: 'Grass Blossom Mat', slug: 'grass-blossom-mat', defaultCount: 0, category: 'Aniimo Materials',
-        tooltip: "Lv.1: scales, quick scales&#10;New facility: level unconfirmed, sell values/times are estimates"
+        name: 'Grass Blossom Mat', slug: 'grass-blossom-mat', defaultCount: 0, category: 'Aniimo Materials', hasLevels: false,
+        tooltip: "scales, quick scales&#10;Doesn't level up. Sell values/times are estimates"
     },
     {
-        name: 'Starfall Hammock', slug: 'starfall-hammock', defaultCount: 0, category: 'Aniimo Materials',
-        tooltip: "Lv.1: star (needs Cool environment)&#10;New facility: level unconfirmed, environment requirement not enforced yet"
+        name: 'Starfall Hammock', slug: 'starfall-hammock', defaultCount: 0, category: 'Aniimo Materials', hasLevels: false,
+        tooltip: "star (needs Cool environment)&#10;Doesn't level up. Environment requirement not enforced yet"
     },
     {
-        name: 'Tidewhisper Sandcastle', slug: 'tidewhisper-sandcastle', defaultCount: 0, category: 'Aniimo Materials',
-        tooltip: "Lv.1: pearl (needs Cool environment), love bubble (needs Freeze environment)&#10;New facility: level unconfirmed, environment requirement not enforced yet"
+        name: 'Tidewhisper Sandcastle', slug: 'tidewhisper-sandcastle', defaultCount: 0, category: 'Aniimo Materials', hasLevels: false,
+        tooltip: "pearl (needs Cool environment), love bubble (needs Freeze environment)&#10;Doesn't level up. Environment requirement not enforced yet"
     },
     {
-        name: 'Dewy House', slug: 'dewy-house', defaultCount: 0, category: 'Aniimo Materials',
-        tooltip: "Lv.1: aromathyst (needs Warm environment)&#10;New facility: level unconfirmed, environment requirement not enforced yet"
+        name: 'Dewy House', slug: 'dewy-house', defaultCount: 0, category: 'Aniimo Materials', hasLevels: false,
+        tooltip: "aromathyst (needs Warm environment)&#10;Doesn't level up. Environment requirement not enforced yet"
     },
     {
         name: 'Carousel Mill', slug: 'carousel-mill', defaultCount: 1, category: 'Materials Processing',
