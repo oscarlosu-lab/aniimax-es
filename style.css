@@ -215,12 +215,48 @@ p {
     cursor: pointer;
 }
 
+/* Radio Group (currency selector) */
+.radio-group {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.radio-group input[type="radio"] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+}
+
 /* Facilities Grid */
+.facilities-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.facility-category-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border);
+}
+
 .facilities-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
-    margin-bottom: 1.5rem;
 }
 
 .facility-card {
@@ -401,6 +437,16 @@ p {
     font-size: 1.1rem;
     font-weight: bold;
     color: var(--success);
+}
+
+/* Byproduct bonus rows, appended to the bottom of the Product Breakdown table */
+#product-breakdown-table tbody tr.byproduct-row {
+    color: var(--warning);
+    font-style: italic;
+}
+
+#product-breakdown-table tbody tr.byproduct-row td {
+    border-top: 1px dashed var(--warning);
 }
 
 /* Production Steps */
@@ -597,6 +643,36 @@ tbody tr:first-child {
 tbody tr:first-child td {
     color: var(--success);
     font-weight: bold;
+}
+
+/* Facility plan tables (one per category — see renderFacilityPlan in app.js): status reflects
+   role (producing/idle/not needed), not row position — override the generic "highlight first
+   row" rule above so it doesn't imply the first facility listed is special. */
+.facility-plan-table tbody tr:first-child td {
+    color: inherit;
+    font-weight: normal;
+}
+
+.facility-plan-table tbody tr.status-not_needed td,
+.facility-plan-table tbody tr.status-nothing_available td,
+.facility-plan-table tbody tr.status-idle td {
+    color: var(--text-muted);
+}
+
+/* Recipe reference tables (facilities.html): one table per facility, listed row order reflects
+   level/name sort, not importance — same override as the facility-plan table above. */
+.recipe-table tbody tr:first-child td {
+    color: inherit;
+    font-weight: normal;
+}
+
+.facility-recipe-table {
+    margin-bottom: 1.5rem;
+}
+
+.facility-recipe-table h4 {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
 }
 
 /* Footer */
