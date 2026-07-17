@@ -15,9 +15,16 @@ const pendingWorkerRequests = new Map();
 function initWorker() {
     worker = new Worker('./worker.js', { type: 'module' });
     worker.onmessage = (event) => {
-        const { id, ok, result, error } = event.data;
+        const { id, type, ok, result, error, count } = event.data;
         const pending = pendingWorkerRequests.get(id);
         if (!pending) return;
+        // A `find_plan` request can receive several `type: 'progress'` messages (the solver's own
+        // real trial-solve count; see `find_plan`'s doc comment in wasm.rs) before its one final
+        // `{ ok, result }` response; only the latter resolves/removes the pending request.
+        if (type === 'progress') {
+            if (pending.onProgress) pending.onProgress(count);
+            return;
+        }
         pendingWorkerRequests.delete(id);
         if (ok) {
             pending.resolve(result);
@@ -31,14 +38,33 @@ function initWorker() {
 }
 
 // Sends one request to the worker and resolves with its result (or rejects with its error);
-// `type` matches a key in worker.js's `HANDLERS`, `payload` is that function's own single string
-// argument (omit for `get_version`/`get_all_items`, which take none).
-function callWorker(type, payload) {
+// `type` matches a key in worker.js's `HANDLERS` (or `'find_plan'`, handled specially there),
+// `payload` is that function's own single string argument (omit for `get_version`/
+// `get_all_items`, which take none). `onProgress(count)`, if given, is called for every
+// intermediate progress message the request receives before its final result (currently only
+// `find_plan` sends any); see worker.js.
+function callWorker(type, payload, onProgress) {
     return new Promise((resolve, reject) => {
         const id = ++nextRequestId;
-        pendingWorkerRequests.set(id, { resolve, reject });
+        pendingWorkerRequests.set(id, { resolve, reject, onProgress });
         worker.postMessage({ id, type, payload });
     });
+}
+
+// Converts the solver's real, running trial-solve count (from `find_plan`'s progress callback;
+// see worker.js) into a progress-bar fill percentage. The algorithm's exact total trial count
+// isn't knowable in advance: several of its exclusion passes stop once they converge rather than
+// running a fixed number of times (see `find_production_plan`'s doc comments in optimizer.rs), so
+// there's no true denominator to divide by. Instead of pretending to know one, this asymptotically
+// approaches (but caps below) 100% as `count` grows, using `PROGRESS_HALFWAY_TRIALS` as the trial
+// count at which the bar is half full; every tick this responds to is a genuinely completed trial
+// solve, so unlike a purely decorative animation, a faster machine or a simpler facility setup
+// visibly reaches each milestone sooner. Capped at 96% (not 100%) while still running, so the bar
+// never visually claims "done" before `find_plan` actually returns; `runFindPlan` sets it to a
+// literal 100% only once the result is actually back.
+const PROGRESS_HALFWAY_TRIALS = 10;
+function trialCountToPercent(count) {
+    return Math.min(96, Math.round((100 * count) / (count + PROGRESS_HALFWAY_TRIALS)));
 }
 
 // The most recently computed plan (the full JS object returned by find_plan, including
@@ -777,19 +803,30 @@ async function runFindPlan() {
     const btnText = btn.querySelector('.btn-text');
     const btnLoading = btn.querySelector('.btn-loading');
     const progressBar = document.getElementById('progress-bar-container');
+    const progressFill = document.getElementById('progress-bar-fill');
+    const progressCaption = document.getElementById('progress-bar-caption');
 
     btn.disabled = true;
     btnText.style.display = 'none';
     btnLoading.style.display = 'inline';
     progressBar.style.display = 'block';
+    progressCaption.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressCaption.textContent = 'Starting...';
 
     try {
         const input = getPlanInputValues();
         const inputJson = JSON.stringify(input);
 
         // Runs in the worker (see worker.js); the main thread stays free to paint the progress
-        // bar above for however long this takes, instead of freezing.
-        const resultJson = await callWorker('find_plan', inputJson);
+        // bar above for however long this takes, instead of freezing. `onTrialProgress` receives
+        // the solver's own real, running trial-solve count after every trial solve; converted to
+        // a fill percentage by `trialCountToPercent` below.
+        const resultJson = await callWorker('find_plan', inputJson, (count) => {
+            progressFill.style.width = `${trialCountToPercent(count)}%`;
+            progressCaption.textContent = `Trial ${count}...`;
+        });
+        progressFill.style.width = '100%';
         const plan = JSON.parse(resultJson);
 
         lastPlan = plan;
@@ -806,6 +843,7 @@ async function runFindPlan() {
         btnText.style.display = 'inline';
         btnLoading.style.display = 'none';
         progressBar.style.display = 'none';
+        progressCaption.style.display = 'none';
     }
 }
 

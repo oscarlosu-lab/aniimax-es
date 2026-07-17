@@ -439,10 +439,10 @@ p {
     cursor: not-allowed;
 }
 
-/* Progress bar shown while find_plan runs in the worker (see worker.js); indeterminate, since
-   the solver doesn't report real completion percentage, just that it's actively working. */
+/* Progress bar shown while find_plan runs in the worker (see worker.js); fill width is driven by
+   the solver's own real trial-solve count (see `trialCountToPercent` in app.js), not a decorative
+   animation, so it actually reflects work happening. */
 .progress-bar-container {
-    position: relative;
     width: 100%;
     height: 4px;
     margin-top: 0.6rem;
@@ -452,20 +452,11 @@ p {
 }
 
 .progress-bar-fill {
-    position: absolute;
-    top: 0;
-    left: -30%;
-    width: 30%;
+    width: 0%;
     height: 100%;
     background: var(--text);
     border-radius: 2px;
-    animation: progress-indeterminate 1.3s ease-in-out infinite;
-}
-
-@keyframes progress-indeterminate {
-    0% { left: -30%; }
-    50% { left: 100%; }
-    100% { left: -30%; }
+    transition: width 0.15s ease-out;
 }
 
 /* Error Message */

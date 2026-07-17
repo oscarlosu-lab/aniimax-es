@@ -7,12 +7,24 @@ import init, { find_plan, time_to_reach, get_version, get_all_items } from './pk
 
 const ready = init();
 
-const HANDLERS = { find_plan, time_to_reach, get_version, get_all_items };
+// Handlers taking a single string argument and returning one; `find_plan` is handled separately
+// below since it also takes a progress callback.
+const HANDLERS = { time_to_reach, get_version, get_all_items };
 
 self.onmessage = async (event) => {
     const { id, type, payload } = event.data;
     try {
         await ready;
+        if (type === 'find_plan') {
+            // Forwarded straight from the wasm solver's own real trial-solve count (see
+            // `find_plan`'s doc comment in wasm.rs); a `type: 'progress'` message, distinct from
+            // the final `{ ok, result }` response below, so `app.js`'s `callWorker` can relay it
+            // to a live progress bar without resolving the request early.
+            const onProgress = (count) => self.postMessage({ id, type: 'progress', count });
+            const result = find_plan(payload, onProgress);
+            self.postMessage({ id, ok: true, result });
+            return;
+        }
         const handler = HANDLERS[type];
         if (!handler) {
             throw new Error(`Unknown worker request type: ${type}`);
