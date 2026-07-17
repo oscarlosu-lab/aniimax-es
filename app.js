@@ -553,9 +553,15 @@ function renderEnvironmentDiagram(layout) {
     const coverageMin = buildingCenter - ENVIRONMENT_COVERAGE_RADIUS;
     const coverageSize = ENVIRONMENT_COVERAGE_RADIUS * 2;
 
+    // A small fixed inset shrinks each tile slightly so adjacent, edge-touching placements (a
+    // legitimate, non-overlapping packing) render with a visible gap between them instead of
+    // looking like one contiguous, ambiguous blob; purely cosmetic, doesn't reflect anything about
+    // the actual game geometry.
+    const inset = 0.06;
     const rects = layout.map(p => {
         const color = ENVIRONMENT_FACILITY_COLORS[p.facility] || '#888888';
-        return `<rect x="${p.x}" y="${p.y}" width="${p.size}" height="${p.size}" fill="${color}" fill-opacity="0.5" stroke="${color}" stroke-width="0.06" />`;
+        const size = p.size - inset * 2;
+        return `<rect x="${p.x + inset}" y="${p.y + inset}" width="${size}" height="${size}" fill="${color}" fill-opacity="0.75" stroke="${color}" stroke-width="0.03" />`;
     }).join('');
 
     const usedFacilities = [...new Set(layout.map(p => p.facility))];
@@ -567,7 +573,7 @@ function renderEnvironmentDiagram(layout) {
 
     return `
         <div class="env-diagram">
-            <svg viewBox="${viewMin} ${viewMin} ${viewSize} ${viewSize}" width="150" height="150">
+            <svg viewBox="${viewMin} ${viewMin} ${viewSize} ${viewSize}" width="200" height="200">
                 <rect x="${coverageMin}" y="${coverageMin}" width="${coverageSize}" height="${coverageSize}"
                       fill="none" stroke="currentColor" stroke-opacity="0.4" stroke-dasharray="0.3,0.3" stroke-width="0.06" />
                 <rect x="0" y="0" width="${ENVIRONMENT_BUILDING_SIZE}" height="${ENVIRONMENT_BUILDING_SIZE}" fill="currentColor" fill-opacity="0.6" />
