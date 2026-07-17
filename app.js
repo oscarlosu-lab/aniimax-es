@@ -154,7 +154,7 @@ function getPersistedFieldIds() {
     return [
         'currency-coins', 'currency-bud-tickets',
         'target-amount', 'current-amount',
-        'prioritize-byproducts', 'exclude-wheat',
+        'prioritize-byproducts',
         'ecological-module-level', 'kitchen-module-level',
         'mineral-detector-level', 'crafting-module-level'
     ];
@@ -259,8 +259,8 @@ function getCurrency() {
     return checked ? checked.value : 'coins';
 }
 
-// Get plan-level input values from the form (facilities/currency/modules/exclude-wheat/
-// prioritize-byproducts — nothing goal-related, since find_plan doesn't need a target).
+// Get plan-level input values from the form (facilities/currency/modules/prioritize-byproducts —
+// nothing goal-related, since find_plan doesn't need a target).
 function getPlanInputValues() {
     // `facilityTiers` is the live source of truth for owned counts (kept in sync with the DOM by
     // `attachFacilityTierHandlers`), sent straight through as a list of tiers per facility — see
@@ -282,7 +282,6 @@ function getPlanInputValues() {
 
     return {
         currency: getCurrency(),
-        exclude_wheat: document.getElementById('exclude-wheat').checked,
         prioritize_byproducts: document.getElementById('prioritize-byproducts').checked,
         facilities,
         modules
