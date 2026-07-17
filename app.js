@@ -55,16 +55,35 @@ function callWorker(type, payload, onProgress) {
 // see worker.js) into a progress-bar fill percentage. The algorithm's exact total trial count
 // isn't knowable in advance: several of its exclusion passes stop once they converge rather than
 // running a fixed number of times (see `find_production_plan`'s doc comments in optimizer.rs), so
-// there's no true denominator to divide by. Instead of pretending to know one, this asymptotically
-// approaches (but caps below) 100% as `count` grows, using `PROGRESS_HALFWAY_TRIALS` as the trial
-// count at which the bar is half full; every tick this responds to is a genuinely completed trial
-// solve, so unlike a purely decorative animation, a faster machine or a simpler facility setup
-// visibly reaches each milestone sooner. Capped at 96% (not 100%) while still running, so the bar
-// never visually claims "done" before `find_plan` actually returns; `runFindPlan` sets it to a
-// literal 100% only once the result is actually back.
-const PROGRESS_HALFWAY_TRIALS = 10;
+// there's no true denominator to divide by. Every tick this responds to is a genuinely completed
+// trial solve, so unlike a purely decorative animation, a faster machine or a simpler facility
+// setup visibly reaches each milestone sooner. Capped at 96% (not 100%) while still running, so
+// the bar never visually claims "done" before `find_plan` actually returns; `runFindPlan` sets it
+// to a literal 100% only once the result is actually back.
+//
+// Two phases, not one asymptotic curve for the whole run: the solver's own shape is bimodal, not
+// smoothly decaying. The first `EARLY_PHASE_TRIALS` or so cover just the initial candidate
+// solve (fast, and roughly the ENTIRE cost for a simple facility setup with nothing contested).
+// Everything past that is the environment-coverage-CHOICE exclusion pass (see its doc comment in
+// optimizer.rs), which reruns the full packing pipeline per trial and, for a facility setup with
+// real contested resources, routinely runs into the hundreds of trials across its rounds of
+// per-processor, per-ingredient, and pairs searches. A single asymptotic curve tuned to feel right
+// for the fast, simple case (a low halfway trial count) makes that expensive long tail nearly
+// invisible -- it's already past 90% by trial 100, then creeps for the remaining several hundred,
+// which is exactly the "gets exponentially slower towards the end" complaint this two-phase
+// version fixes: the SECOND phase gets its own, much larger halfway trial count, so the visual
+// progress keeps moving noticeably through that long tail instead of flatlining near the cap.
+const EARLY_PHASE_TRIALS = 15;
+const EARLY_PHASE_PERCENT = 25;
+const LATE_PHASE_HALFWAY_TRIALS = 120;
 function trialCountToPercent(count) {
-    return Math.min(96, Math.round((100 * count) / (count + PROGRESS_HALFWAY_TRIALS)));
+    if (count <= EARLY_PHASE_TRIALS) {
+        return Math.round((EARLY_PHASE_PERCENT * count) / EARLY_PHASE_TRIALS);
+    }
+    const trialsIntoLatePhase = count - EARLY_PHASE_TRIALS;
+    const latePhasePercentRange = 96 - EARLY_PHASE_PERCENT;
+    const latePhaseFraction = trialsIntoLatePhase / (trialsIntoLatePhase + LATE_PHASE_HALFWAY_TRIALS);
+    return Math.min(96, Math.round(EARLY_PHASE_PERCENT + latePhasePercentRange * latePhaseFraction));
 }
 
 // The most recently computed plan (the full JS object returned by find_plan, including
