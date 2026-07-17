@@ -1,9 +1,45 @@
 // Aniimax Web Application
 
-import init, { find_plan, time_to_reach, get_version, get_all_items } from './pkg/aniimax.js';
 import { FACILITIES, FACILITY_CATEGORIES, FACILITY_CATEGORY_BY_NAME } from './facility-config.js';
 
 let wasmReady = false;
+
+// The wasm optimizer runs in a Web Worker (see worker.js), not on the main thread: `find_plan`
+// can take long enough on a complex facility setup that running it here would freeze the page's
+// own rendering, which is what makes the browser offer to kill the tab. Every call site below
+// goes through `callWorker` instead of calling a wasm-bindgen function directly.
+let worker = null;
+let nextRequestId = 0;
+const pendingWorkerRequests = new Map();
+
+function initWorker() {
+    worker = new Worker('./worker.js', { type: 'module' });
+    worker.onmessage = (event) => {
+        const { id, ok, result, error } = event.data;
+        const pending = pendingWorkerRequests.get(id);
+        if (!pending) return;
+        pendingWorkerRequests.delete(id);
+        if (ok) {
+            pending.resolve(result);
+        } else {
+            pending.reject(new Error(error));
+        }
+    };
+    worker.onerror = (event) => {
+        console.error('Worker error:', event.message || event);
+    };
+}
+
+// Sends one request to the worker and resolves with its result (or rejects with its error);
+// `type` matches a key in worker.js's `HANDLERS`, `payload` is that function's own single string
+// argument (omit for `get_version`/`get_all_items`, which take none).
+function callWorker(type, payload) {
+    return new Promise((resolve, reject) => {
+        const id = ++nextRequestId;
+        pendingWorkerRequests.set(id, { resolve, reject });
+        worker.postMessage({ id, type, payload });
+    });
+}
 
 // The most recently computed plan (the full JS object returned by find_plan, including
 // `success`/`error`); held in memory so changing the goal amount can call time_to_reach directly
@@ -251,14 +287,13 @@ function clearSavedInputs() {
     window.location.reload();
 }
 
-// Initialize WASM module
+// Initialize the worker and its wasm module.
 async function initWasm() {
     try {
-        await init();
+        initWorker();
+        const version = await callWorker('get_version');
         wasmReady = true;
 
-        // Display version
-        const version = get_version();
         document.getElementById('version').textContent = version;
 
         console.log(`Aniimax v${version} loaded successfully`);
@@ -741,24 +776,26 @@ async function runFindPlan() {
     const btn = document.getElementById('optimize-btn');
     const btnText = btn.querySelector('.btn-text');
     const btnLoading = btn.querySelector('.btn-loading');
+    const progressBar = document.getElementById('progress-bar-container');
 
     btn.disabled = true;
     btnText.style.display = 'none';
     btnLoading.style.display = 'inline';
+    progressBar.style.display = 'block';
 
     try {
         const input = getPlanInputValues();
         const inputJson = JSON.stringify(input);
 
-        // Run optimizer (async to not block UI)
-        await new Promise(resolve => setTimeout(resolve, 10));
-        const resultJson = find_plan(inputJson);
+        // Runs in the worker (see worker.js); the main thread stays free to paint the progress
+        // bar above for however long this takes, instead of freezing.
+        const resultJson = await callWorker('find_plan', inputJson);
         const plan = JSON.parse(resultJson);
 
         lastPlan = plan;
         displayPlan(plan);
         if (plan.success) {
-            runTimeToGoal();
+            await runTimeToGoal();
         }
     } catch (error) {
         console.error('Plan calculation error:', error);
@@ -768,19 +805,20 @@ async function runFindPlan() {
         btn.disabled = false;
         btnText.style.display = 'inline';
         btnLoading.style.display = 'none';
+        progressBar.style.display = 'none';
     }
 }
 
 // Compute time-to-goal against the already-computed `lastPlan`; cheap, safe to call on every
 // keystroke of the goal-amount fields. No-op until a plan exists.
-function runTimeToGoal() {
+async function runTimeToGoal() {
     if (!lastPlan || !lastPlan.success) return;
 
     const target = floatOrDefault(document.getElementById('target-amount').value, 0);
     const current = floatOrDefault(document.getElementById('current-amount').value, 0);
 
     try {
-        const resultJson = time_to_reach(JSON.stringify({ plan: lastPlan, target, current }));
+        const resultJson = await callWorker('time_to_reach', JSON.stringify({ plan: lastPlan, target, current }));
         displayGoal(JSON.parse(resultJson));
     } catch (error) {
         console.error('Goal calculation error:', error);
@@ -912,7 +950,7 @@ function renderRecipeTables(recipes) {
     }).join('');
 }
 
-window.showFacilities = function() {
+window.showFacilities = async function() {
     document.getElementById('facilitiesModal').classList.add('show');
     if (recipesRendered) return;
     if (!wasmReady) {
@@ -920,7 +958,8 @@ window.showFacilities = function() {
         return;
     }
     try {
-        const recipes = JSON.parse(get_all_items());
+        const recipesJson = await callWorker('get_all_items');
+        const recipes = JSON.parse(recipesJson);
         renderRecipeTables(recipes);
         recipesRendered = true;
         document.getElementById('facilities-loading-hint').style.display = 'none';
