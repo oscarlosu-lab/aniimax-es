@@ -56,14 +56,14 @@ function renderFacilityCards() {
 const STORAGE_KEY = 'aniimax-config-v1';
 
 // Every input ID whose value should be persisted. Facility inputs are derived from
-// FACILITIES so newly added facilities are covered automatically. The two currency radios are
-// both listed (only the checked one actually restores anything, per the type === 'radio' branch
+// FACILITIES so newly added facilities are covered automatically. Both currency radios are
+// listed (only the checked one actually restores anything, per the type === 'radio' branch
 // below) since they share a name but not an id.
 function getPersistedFieldIds() {
     const staticIds = [
         'currency-coins', 'currency-bud-tickets',
         'target-amount', 'current-amount',
-        'exclude-wheat',
+        'prioritize-byproducts', 'exclude-wheat',
         'ecological-module-level', 'kitchen-module-level',
         'mineral-detector-level', 'crafting-module-level'
     ];
@@ -150,8 +150,8 @@ function getCurrency() {
     return checked ? checked.value : 'coins';
 }
 
-// Get plan-level input values from the form (facilities/currency/modules/exclude-wheat — nothing
-// goal-related, since find_plan doesn't need a target).
+// Get plan-level input values from the form (facilities/currency/modules/exclude-wheat/
+// prioritize-byproducts — nothing goal-related, since find_plan doesn't need a target).
 function getPlanInputValues() {
     const facilities = {};
     FACILITIES.forEach(f => {
@@ -175,6 +175,7 @@ function getPlanInputValues() {
     return {
         currency: getCurrency(),
         exclude_wheat: document.getElementById('exclude-wheat').checked,
+        prioritize_byproducts: document.getElementById('prioritize-byproducts').checked,
         facilities,
         modules
     };
@@ -274,10 +275,190 @@ function renderProductBreakdown(goalResult) {
     });
 }
 
-// Renders `plan.coin_items` (one row per facility+product — see `PlanStep` in models.rs) as one
-// table per facility category, in the same grouping and order as the Facilities input section
-// (FACILITY_CATEGORIES). Rows for the same facility appear back-to-back within its category's
-// table when that facility produces more than one item.
+// Renders `goalResult.seed_requirements` — one row per grower crop actually being planted, how
+// many times each of its dedicated plots needs replanting over the goal's total time, so a
+// player can have enough seeds ready ahead of time. Never includes processor facilities; they
+// aren't planted (see `SeedRequirement` in models.rs).
+function renderSeedsNeeded(goalResult) {
+    const section = document.getElementById('seeds-needed-section');
+    const tbody = document.getElementById('seeds-needed-tbody');
+
+    const requirements = goalResult.seed_requirements || [];
+    if (requirements.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    section.style.display = 'block';
+
+    tbody.innerHTML = requirements.map(r => `
+        <tr>
+            <td>${r.item_name}</td>
+            <td>${r.facility}</td>
+            <td>${r.facility_count.toLocaleString()}</td>
+            <td>${r.seeds_per_plot.toLocaleString()}</td>
+            <td>${r.total_seeds.toLocaleString()}</td>
+        </tr>
+    `).join('');
+}
+
+// Fixed display order for environment groups — matches ENVIRONMENT_BUILDINGS's mode order in
+// optimizer.rs (Heat Furnace's two modes, then Cooling Unit's two, then Sunlamp's one).
+const ENVIRONMENT_MODE_ORDER = ['Warm', 'Scorching', 'Cool', 'Freeze', 'Adequate'];
+
+function facilityPlanTable(rows) {
+    return `
+        <div class="table-wrapper">
+            <table class="facility-plan-table">
+                <thead>
+                    <tr>
+                        <th>Facility</th>
+                        <th>Count</th>
+                        <th>Producing</th>
+                        <th>Why</th>
+                    </tr>
+                </thead>
+                <tbody>${rows.map(step => `
+                    <tr class="status-${step.status}">
+                        <td>${step.facility}</td>
+                        <td>${step.facility_count}</td>
+                        <td>${step.item_name || '—'}</td>
+                        <td>${step.reason}</td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Splits one environment mode's rows across its individual building units. Unlike the old
+// preset-based version, each unit's exact facility-type capacity now comes straight from the
+// solver's own geometric packing (`assignment.layouts[i]` — see `FacilityPlacement` in
+// models.rs), not an evenly-divided share, since real per-building layouts aren't always
+// identical (e.g. one Cooling Unit might host Farmland+Woodland while another hosts only
+// Farmland). Still greedily fills each unit's per-facility-type capacity in row order, splitting
+// a single row across units when its count exceeds one unit's remaining capacity — the exact
+// split is arbitrary (any unit can host any plot of the crops sharing its mode), only the
+// per-unit totals (and the diagram's exact positions) are load-bearing.
+function splitByEnvironmentUnit(rows, assignmentsForMode) {
+    const units = [];
+    assignmentsForMode.forEach(a => {
+        (a.layouts || []).forEach(layout => {
+            const remaining = {};
+            layout.forEach(p => {
+                remaining[p.facility] = (remaining[p.facility] || 0) + 1;
+            });
+            units.push({ building: a.building, remaining, rows: [], layout });
+        });
+    });
+
+    rows.forEach(step => {
+        let remaining = step.facility_count;
+        for (const unit of units) {
+            if (remaining <= 0) break;
+            const available = unit.remaining[step.facility] || 0;
+            const take = Math.min(remaining, available);
+            if (take <= 0) continue;
+            unit.remaining[step.facility] -= take;
+            unit.rows.push({ ...step, facility_count: take });
+            remaining -= take;
+        }
+    });
+
+    // A building's geometric layout is capacity, not a production guarantee — a facility type can
+    // sit unused in a unit's coverage if there wasn't enough demand to fill every plot the fill
+    // loop above offered it. Drawing that unused capacity in the diagram would show the player
+    // squares they shouldn't actually place anything in (and that don't match this unit's own
+    // table), so trim `layout` down to just the placements this unit's `rows` actually accounted
+    // for, per facility type.
+    units.forEach(unit => {
+        const totalByFacility = {};
+        unit.layout.forEach(p => {
+            totalByFacility[p.facility] = (totalByFacility[p.facility] || 0) + 1;
+        });
+        const takenSoFar = {};
+        unit.layout = unit.layout.filter(p => {
+            const unused = unit.remaining[p.facility] || 0;
+            const used = (totalByFacility[p.facility] || 0) - unused;
+            takenSoFar[p.facility] = takenSoFar[p.facility] || 0;
+            if (takenSoFar[p.facility] < used) {
+                takenSoFar[p.facility]++;
+                return true;
+            }
+            return false;
+        });
+    });
+
+    return units.filter(u => u.rows.length > 0);
+}
+
+// Fixed color per environment-gated facility type, used by the layout diagram below — purely
+// categorical (not theme-dependent), so it stays distinguishable in both light and dark mode.
+const ENVIRONMENT_FACILITY_COLORS = {
+    'Farmland': '#c9a24d',
+    'Woodland': '#4caf50',
+    'Starfall Hammock': '#42a5f5',
+    'Tidewhisper Sandcastle': '#26c6da',
+    'Grass Blossom Mat': '#ab47bc',
+    'Dewy House': '#ef8a80',
+};
+
+// Matches the confirmed geometry in src/coverage.rs: every environment building is a 2x2
+// footprint, radiating coverage as a square of side 2*radius centered on its own center.
+const ENVIRONMENT_BUILDING_SIZE = 2.0;
+const ENVIRONMENT_COVERAGE_RADIUS = 4.5;
+
+// Renders a simple SVG diagram of one building instance's exact chosen layout (from
+// `assignment.layouts[i]`) — literally the solver's own placements, not an invented
+// illustration: a dashed square for the coverage zone, a solid square for the building itself,
+// and one colored rectangle per hosted facility, with a small legend mapping color to facility
+// name (there's no room for full labels at this scale).
+function renderEnvironmentDiagram(layout) {
+    if (!layout || layout.length === 0) return '';
+    const margin = 5;
+    const half = ENVIRONMENT_COVERAGE_RADIUS + margin;
+    const buildingCenter = ENVIRONMENT_BUILDING_SIZE / 2;
+    // Center the viewBox on the building's own center, not world origin (0,0) — the building sits
+    // at (0,0)-(size,size), so its center (and the coverage zone centered on it) is offset from
+    // the origin. Centering the viewBox on the origin instead made the whole diagram look
+    // consistently shifted toward one corner.
+    const viewMin = buildingCenter - half;
+    const viewSize = half * 2;
+    const coverageMin = buildingCenter - ENVIRONMENT_COVERAGE_RADIUS;
+    const coverageSize = ENVIRONMENT_COVERAGE_RADIUS * 2;
+
+    const rects = layout.map(p => {
+        const color = ENVIRONMENT_FACILITY_COLORS[p.facility] || '#888888';
+        return `<rect x="${p.x}" y="${p.y}" width="${p.size}" height="${p.size}" fill="${color}" fill-opacity="0.5" stroke="${color}" stroke-width="0.06" />`;
+    }).join('');
+
+    const usedFacilities = [...new Set(layout.map(p => p.facility))];
+    const legend = usedFacilities.map(f => `
+        <span class="env-legend-item">
+            <span class="env-legend-swatch" style="background:${ENVIRONMENT_FACILITY_COLORS[f] || '#888888'}"></span>${f}
+        </span>
+    `).join('');
+
+    return `
+        <div class="env-diagram">
+            <svg viewBox="${viewMin} ${viewMin} ${viewSize} ${viewSize}" width="150" height="150">
+                <rect x="${coverageMin}" y="${coverageMin}" width="${coverageSize}" height="${coverageSize}"
+                      fill="none" stroke="currentColor" stroke-opacity="0.4" stroke-dasharray="0.3,0.3" stroke-width="0.06" />
+                <rect x="0" y="0" width="${ENVIRONMENT_BUILDING_SIZE}" height="${ENVIRONMENT_BUILDING_SIZE}" fill="currentColor" fill-opacity="0.6" />
+                ${rects}
+            </svg>
+            <div class="env-legend">${legend}</div>
+        </div>
+    `;
+}
+
+// Renders `plan.coin_items` (one row per facility+product — see `PlanStep` in models.rs). Rows
+// for a crop that needs a growing environment (Cool/Warm/Freeze/Scorching/Adequate) are pulled
+// out into their own "Environment: X" group first — regardless of whether they're grown on
+// Farmland or Woodland — so it's obvious at a glance which facilities share the same environment
+// building, instead of that connection being spelled out in each row's own text. When a mode
+// needs more than one building unit, that group splits into one table per unit (see
+// `splitByEnvironmentUnit`) so it's clear which crops go in which physical building. Everything
+// else falls back to the original per-facility-category grouping (FACILITY_CATEGORIES).
 function renderFacilityPlan(plan) {
     const container = document.getElementById('facility-plan-container');
     const steps = plan.coin_items || [];
@@ -287,44 +468,58 @@ function renderFacilityPlan(plan) {
         return;
     }
 
-    const byCategory = new Map(FACILITY_CATEGORIES.map(c => [c, []]));
+    const envGroups = new Map();
+    const ungatedSteps = [];
     steps.forEach(step => {
+        if (step.environment) {
+            if (!envGroups.has(step.environment)) envGroups.set(step.environment, []);
+            envGroups.get(step.environment).push(step);
+        } else {
+            ungatedSteps.push(step);
+        }
+    });
+
+    const assignments = plan.environment_assignments || [];
+    const environmentSections = ENVIRONMENT_MODE_ORDER.filter(mode => envGroups.has(mode)).map(mode => {
+        const assignmentsForMode = assignments.filter(a => a.mode === mode);
+        const units = splitByEnvironmentUnit(envGroups.get(mode), assignmentsForMode);
+
+        const unitTables = units.length === 0
+            ? facilityPlanTable(envGroups.get(mode))
+            : units.map((unit, i) => `
+                ${units.length > 1 ? `<p class="hint small">${unit.building} ${i + 1}</p>` : ''}
+                <div class="env-unit">
+                    ${renderEnvironmentDiagram(unit.layout)}
+                    <div class="env-unit-table">${facilityPlanTable(unit.rows)}</div>
+                </div>
+            `).join('');
+
+        return `
+            <div class="facility-category">
+                <h4 class="facility-category-title">Environment: ${mode}</h4>
+                ${unitTables}
+            </div>
+        `;
+    }).join('');
+
+    const byCategory = new Map(FACILITY_CATEGORIES.map(c => [c, []]));
+    ungatedSteps.forEach(step => {
         const category = FACILITY_CATEGORY_BY_NAME.get(step.facility) || 'Materials Processing';
         byCategory.get(category).push(step);
     });
 
-    container.innerHTML = FACILITY_CATEGORIES.map(category => {
+    const categorySections = FACILITY_CATEGORIES.map(category => {
         const categorySteps = byCategory.get(category);
         if (categorySteps.length === 0) return '';
-
-        const rows = categorySteps.map(step => `
-            <tr class="status-${step.status}">
-                <td>${step.facility}</td>
-                <td>${step.facility_count}</td>
-                <td>${step.item_name || '—'}</td>
-                <td>${step.reason}</td>
-            </tr>
-        `).join('');
-
         return `
             <div class="facility-category">
                 <h4 class="facility-category-title">${category}</h4>
-                <div class="table-wrapper">
-                    <table class="facility-plan-table">
-                        <thead>
-                            <tr>
-                                <th>Facility</th>
-                                <th>Count</th>
-                                <th>Producing</th>
-                                <th>Why</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                </div>
+                ${facilityPlanTable(categorySteps)}
             </div>
         `;
     }).join('');
+
+    container.innerHTML = environmentSections + categorySections;
 }
 
 // Render a successfully computed plan: rate summary + facility plan table. Goal-independent —
@@ -364,6 +559,7 @@ function displayGoal(goalResult) {
         document.getElementById('total-time').textContent = '-';
         document.getElementById('amount-produced').textContent = '-';
         document.getElementById('product-breakdown-section').style.display = 'none';
+        document.getElementById('seeds-needed-section').style.display = 'none';
         console.warn('Goal calculation failed:', goalResult.error);
         return;
     }
@@ -372,6 +568,7 @@ function displayGoal(goalResult) {
     document.getElementById('amount-produced').textContent = formatNumber(goalResult.amount_produced);
 
     renderProductBreakdown(goalResult);
+    renderSeedsNeeded(goalResult);
 }
 
 // Solve for the best achievable plan (facilities + currency + modules) — the heavier computation,

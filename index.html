@@ -44,6 +44,16 @@
                     <div class="input-row">
                         <div class="input-field checkbox-field">
                             <label>
+                                <input type="checkbox" id="prioritize-byproducts" checked>
+                                Prioritize Wood Blocks/Mineral Sand
+                            </label>
+                            <p class="hint small">Guarantee the maximum possible Wood Blocks/Mineral Sand rate first, even at the cost of coin/Bud Ticket profit. Uncheck to optimize purely for profit.</p>
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="input-field checkbox-field">
+                            <label>
                                 <input type="checkbox" id="exclude-wheat">
                                 Exclude Wheat
                             </label>
@@ -52,7 +62,7 @@
                     </div>
                 </div>
 
-                <p class="hint small">Currency is optimized one at a time, not jointly. Crafting Table and Claw Game Cooker recipes that yield the currency you didn't pick are simply excluded from that run. Wood Blocks and Mineral Sand aren't modeled as optimization targets, since they're trivially obtained by expanding plots in-game, but they're still reported as a bonus alongside coins.</p>
+                <p class="hint small">Only one currency is optimized at a time, not jointly. Crafting Table and Claw Game Cooker recipes that yield a currency you didn't pick are simply excluded from that run. Wood Blocks/Mineral Sand output is shown as a byproduct alongside your goal once you enter one, and the checkbox above can guarantee its maximum rate.</p>
 
                 <h3>Facilities</h3>
                 <p class="hint">Set the count and level for each facility you have.</p>
@@ -122,10 +132,11 @@
 
                     <div class="production-steps">
                         <h3>What Each Facility Should Do</h3>
-                        <p class="hint small">Grouped the same way as the Facilities section above. Each row is a single product; a facility split between multiple items gets one row per item.</p>
-                        <!-- Populated by app.js's renderFacilityPlan(), one table per facility
-                             category (Materials / Aniimo Materials / Materials Processing), same
-                             grouping as the facilities-grid input section. -->
+                        <p class="hint small">Each row is a single product; a facility split between multiple items gets one row per item. Crops that need a growing environment (Cool/Warm/Freeze/Scorching/Adequate) are grouped by which environment they use, showing which Heat Furnace/Cooling Unit/Sunlamp configuration covers them. Everything else is grouped the same way as the Facilities section above.</p>
+                        <!-- Populated by app.js's renderFacilityPlan(): one section per
+                             environment mode in use (Cool/Warm/Freeze/Scorching/Adequate) first,
+                             then one table per facility category (Materials / Aniimo Materials /
+                             Materials Processing) for everything else. -->
                         <div id="facility-plan-container" class="facilities-container"></div>
                     </div>
 
@@ -173,6 +184,25 @@
                                         </tr>
                                     </thead>
                                     <tbody id="product-breakdown-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="production-steps" id="seeds-needed-section" style="display: none;">
+                            <h3>Seeds Needed</h3>
+                            <p class="hint small">How many times each crop needs to be replanted over the full plan, so you can have enough seeds ready ahead of time. Only covers Farmland and Woodland — mined and Aniimo-dispatched materials don't need seeds, and neither do processed items.</p>
+                            <div class="table-wrapper">
+                                <table id="seeds-needed-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Crop</th>
+                                            <th>Facility</th>
+                                            <th>Plots</th>
+                                            <th>Plantings/Plot</th>
+                                            <th>Total Seeds</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="seeds-needed-tbody"></tbody>
                                 </table>
                             </div>
                         </div>
@@ -227,8 +257,8 @@
                 <button class="close-button" onclick="closeHelp()">&times;</button>
             </div>
             <div class="modal-body">
-                <h3>1. Pick a Currency</h3>
-                <p>Choose Coins or Bud Tickets. Only recipes that sell for that currency are considered.</p>
+                <h3>1. Pick a Target</h3>
+                <p>Choose Coins or Bud Tickets — only recipes that sell for that currency are considered. Wood Blocks/Mineral Sand aren't a separate target; they come as a byproduct of certain Woodland/Mineral Pile crops regardless of what you're optimizing for, and the "Prioritize Wood Blocks/Mineral Sand" checkbox can guarantee their maximum possible rate even at the cost of Coins/Bud Ticket profit.</p>
 
                 <h3>2. Configure Facilities</h3>
                 <p>Set the count and level of each facility you have unlocked in Aniimo Homeland.</p>
@@ -244,13 +274,13 @@
 
                 <h3>Understanding Results</h3>
                 <ul>
-                    <li><strong>Your Rate</strong>: The best steady-state coins (or Bud Tickets) per second achievable with your current facilities</li>
+                    <li><strong>Your Rate</strong>: The best steady-state rate of your chosen target per second achievable with your current facilities</li>
                     <li><strong>What Each Facility Should Do</strong>: Which item to dedicate each owned facility to, running in parallel</li>
                     <li><strong>Total Time / Amount Produced</strong>: How long your goal takes, and the item-level breakdown of what gets made along the way</li>
                 </ul>
 
                 <h3>How It Decides</h3>
-                <p>Every owned facility is dedicated to its own best currency-producing item, all running simultaneously. Different facility types don't compete for the same time slot, so using more of them always finishes faster. The reported rate is the fastest achievable given your current facility counts and levels.</p>
+                <p>Every owned facility is dedicated to its own best item for the chosen target, all running simultaneously. Different facility types don't compete for the same time slot, so using more of them always finishes faster. The reported rate is the fastest achievable given your current facility counts and levels.</p>
             </div>
         </div>
     </div>

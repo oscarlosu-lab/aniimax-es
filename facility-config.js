@@ -23,6 +23,18 @@ export const FACILITIES = [
         tooltip: "Lv.1: shell, quick shell&#10;Lv.2: clay&#10;Lv.3: quartz, quick quartz&#10;Lv.4: gem&#10;Currently the only confirmed source of Mineral Sand. (Times are estimated from workload, see BETA_NOTES.md)"
     },
     {
+        name: 'Heat Furnace', slug: 'heat-furnace', defaultCount: 0, category: 'Environment', hasLevels: false,
+        tooltip: "Provides Warm or Scorching growing conditions for Farmland/Woodland crops that need one&#10;The calculator picks whichever mode is more profitable&#10;One unit covers 24 Farmland, 12 Woodland, or a 12+12 hybrid layout"
+    },
+    {
+        name: 'Cooling Unit', slug: 'cooling-unit', defaultCount: 0, category: 'Environment', hasLevels: false,
+        tooltip: "Provides Cool or Freeze growing conditions for Farmland/Woodland crops that need one&#10;The calculator picks whichever mode is more profitable&#10;One unit covers 24 Farmland, 12 Woodland, or a 12+12 hybrid layout"
+    },
+    {
+        name: 'Sunlamp', slug: 'sunlamp', defaultCount: 0, category: 'Environment', hasLevels: false,
+        tooltip: "Provides Adequate growing conditions for Farmland/Woodland crops that need one&#10;One unit covers 24 Farmland, 12 Woodland, or a 12+12 hybrid layout"
+    },
+    {
         name: 'Nimbus Bed', slug: 'nimbus-bed', defaultCount: 0, category: 'Aniimo Materials', hasLevels: false,
         tooltip: "Requires a matching Aniimo Family (Nimbi for Wool, Iris for Petals)&#10;Produces: wool (4), petals (6) per batch&#10;Doesn't level up"
     },
@@ -75,7 +87,7 @@ export const FACILITIES = [
 // Display order for facility categories — matches the user-provided facility list
 // (BETA_NOTES.md section 11). Auxiliary Facilities (Storage Unit, power/climate buildings) are
 // deliberately excluded here: they don't produce items, see section 11.
-export const FACILITY_CATEGORIES = ['Materials', 'Aniimo Materials', 'Materials Processing'];
+export const FACILITY_CATEGORIES = ['Materials', 'Environment', 'Aniimo Materials', 'Materials Processing'];
 
 // Facility name -> category, so other pages can group by the same categories as the facility
 // input cards (Materials/Aniimo Materials are grower facilities, Materials Processing is
