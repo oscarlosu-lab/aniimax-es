@@ -1,15 +1,19 @@
 // Aniimax Web Application
 
-import init, { find_plan, time_to_reach, get_version } from './pkg/aniimax.js';
+import init, { find_plan, time_to_reach, get_version, get_all_items } from './pkg/aniimax.js';
 import { FACILITIES, FACILITY_CATEGORIES, FACILITY_CATEGORY_BY_NAME } from './facility-config.js';
 
 let wasmReady = false;
 
 // The most recently computed plan (the full JS object returned by find_plan, including
-// `success`/`error`) — held in memory so changing the goal amount can call time_to_reach directly
+// `success`/`error`); held in memory so changing the goal amount can call time_to_reach directly
 // without re-running the facility-allocation solve. Cleared whenever facilities/currency/modules
 // change, since those invalidate the plan.
 let lastPlan = null;
+
+// The most recently computed goal result, held the same way as `lastPlan` so switching the rate
+// unit can re-render the Product Breakdown table's Profit column without recomputing the goal.
+let lastGoalResult = null;
 
 // Display name and per-second unit label for each optimizable currency.
 const CURRENCY_LABELS = {
@@ -17,8 +21,17 @@ const CURRENCY_LABELS = {
     bud_tickets: 'Bud Tickets',
 };
 
+// Multiplier from the solver's native per-second rate to each display unit, and the short suffix
+// shown next to the currency label (e.g. "Coins/hour"). "Your Rate" is stored and computed
+// per-second throughout; this only affects how that one number is displayed.
+const RATE_UNIT_SECONDS = {
+    second: { multiplier: 1, suffix: '/sec' },
+    hour: { multiplier: 3600, suffix: '/hour' },
+    day: { multiplier: 86400, suffix: '/day' },
+};
+
 // Per-facility owned tiers: `{ 'Farmland': [{count: 5, level: 3}, {count: 4, level: 5}], ... }`.
-// The single source of truth for what's owned — rendering reads FROM this, input edits write
+// The single source of truth for what's owned; rendering reads FROM this, input edits write
 // BACK into it, and `getPlanInputValues()` sends it straight to the solver as-is. A player
 // commonly upgrades some but not all of their plots of one facility type (e.g. 5 Farmland at
 // level 3 and 4 more upgraded to level 5), so a facility can own more than one tier; facilities
@@ -34,7 +47,7 @@ function defaultFacilityTiers() {
 }
 
 // Renders one facility's tier rows (Count + Level inputs, a remove button once there's more than
-// one tier, and — only for facilities that level up — an "Add level" button) into its
+// one tier, and, only for facilities that level up, an "Add level" button) into its
 // `.facility-tiers` container. Called on initial render and again, for just that one facility,
 // whenever a tier is added or removed, so editing one facility never disturbs another's inputs.
 function renderTierRows(name) {
@@ -130,7 +143,7 @@ function attachFacilityTierHandlers() {
     });
 
     // Enter key inside a tier input triggers a full plan recalculation, same as every other
-    // input — delegated (rather than the per-input listener loop used for static inputs) since
+    // input; delegated (rather than the per-input listener loop used for static inputs) since
     // tier inputs come and go as levels are added/removed.
     grid.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && e.target.matches('input')) {
@@ -141,11 +154,11 @@ function attachFacilityTierHandlers() {
 
 // --- Local persistence -----------------------------------------------------------------
 // Saves/restores form inputs via localStorage so values survive a page reload. Purely
-// client-side (no account, no server) — works identically on localhost and once this is
+// client-side (no account, no server); works identically on localhost and once this is
 // hosted on GitHub Pages, since localStorage is scoped to the page's own origin.
 const STORAGE_KEY = 'aniimax-config-v1';
 
-// Every plain input ID whose value should be persisted (facility tiers are saved separately —
+// Every plain input ID whose value should be persisted (facility tiers are saved separately;
 // see `facilityTiers`/`initFacilityTiers`, since they're a dynamic list rather than one fixed
 // element per facility). Both currency radios are listed (only the checked one actually
 // restores anything, per the type === 'radio' branch below) since they share a name but not an
@@ -156,7 +169,8 @@ function getPersistedFieldIds() {
         'target-amount', 'current-amount',
         'prioritize-byproducts',
         'ecological-module-level', 'kitchen-module-level',
-        'mineral-detector-level', 'crafting-module-level'
+        'mineral-detector-level', 'crafting-module-level',
+        'rate-unit'
     ];
 }
 
@@ -172,7 +186,7 @@ function readStorage() {
 }
 
 // Populates the module-level `facilityTiers` from a saved config blob (see `readStorage`),
-// falling back to defaults for any facility missing from it — covers both a fresh page load
+// falling back to defaults for any facility missing from it; covers both a fresh page load
 // (no save yet) and a facility newly added to `FACILITIES` since the user's last save.
 function initFacilityTiers(data) {
     const defaults = defaultFacilityTiers();
@@ -217,13 +231,13 @@ function loadInputsFromStorage(data) {
     });
 }
 
-// Auto-save on every change to a persisted static field (facility tier inputs save themselves —
+// Auto-save on every change to a persisted static field (facility tier inputs save themselves;
 // see `attachFacilityTierHandlers`).
 function attachAutoSave() {
     getPersistedFieldIds().forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
-        const eventName = (el.type === 'checkbox' || el.type === 'radio') ? 'change' : 'input';
+        const eventName = (el.type === 'checkbox' || el.type === 'radio' || el.tagName === 'SELECT') ? 'change' : 'input';
         el.addEventListener(eventName, saveInputsToStorage);
     });
 }
@@ -259,11 +273,11 @@ function getCurrency() {
     return checked ? checked.value : 'coins';
 }
 
-// Get plan-level input values from the form (facilities/currency/modules/prioritize-byproducts —
+// Get plan-level input values from the form (facilities/currency/modules/prioritize-byproducts,
 // nothing goal-related, since find_plan doesn't need a target).
 function getPlanInputValues() {
     // `facilityTiers` is the live source of truth for owned counts (kept in sync with the DOM by
-    // `attachFacilityTierHandlers`), sent straight through as a list of tiers per facility — see
+    // `attachFacilityTierHandlers`), sent straight through as a list of tiers per facility; see
     // `JsPlanInput::facilities` in wasm.rs for the shape (`[{count, level}, ...]` per facility).
     const facilities = {};
     FACILITIES.forEach(f => {
@@ -289,7 +303,7 @@ function getPlanInputValues() {
 }
 
 // parseInt/parseFloat that fall back to `fallback` only when the input doesn't parse to a number
-// at all (blank/invalid) — unlike `value || fallback`, these correctly keep a legitimate 0 (e.g.
+// at all (blank/invalid); unlike `value || fallback`, these correctly keep a legitimate 0 (e.g.
 // "I own zero of this facility"), which `||` would silently discard since 0 is falsy in JS.
 function numberOrDefault(value, fallback) {
     const parsed = parseInt(value, 10);
@@ -306,7 +320,7 @@ function formatNumber(num) {
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-// Show an error in the results section (plan-level failures only — goal-level failures are rare
+// Show an error in the results section (plan-level failures only; goal-level failures are rare
 // and shown inline in the goal section instead, since the plan above it is still valid).
 function showError(message) {
     const errorEl = document.getElementById('error-message');
@@ -328,11 +342,13 @@ function updateCurrencyLabels(currency) {
     document.getElementById('amount-produced-label').textContent = `${label} Produced`;
 }
 
-// Renders the item-level production breakdown from `goalResult.products` — one row per income
+// Renders the item-level production breakdown from `goalResult.products`; one row per income
 // stream (a selected item, or the leftover-capacity portion of a split facility), already
 // sorted by net profit descending by the solver. Wood Blocks/Mineral Sand byproducts
 // (`goalResult.byproducts`) are appended as extra rows at the bottom, styled distinctly since
 // they're a side effect of the plan above rather than something sold for the chosen currency.
+// The Profit column scales with whichever unit is selected in `#rate-unit` (see
+// `updateRateDisplay`), same as "Your Rate" above.
 function renderProductBreakdown(goalResult) {
     const section = document.getElementById('product-breakdown-section');
     const tbody = document.getElementById('product-breakdown-tbody');
@@ -345,15 +361,19 @@ function renderProductBreakdown(goalResult) {
     }
     section.style.display = 'block';
 
+    const unit = document.getElementById('rate-unit').value;
+    const { multiplier, suffix } = RATE_UNIT_SECONDS[unit] || RATE_UNIT_SECONDS.second;
+    document.getElementById('product-breakdown-rate-header').textContent = `Profit${suffix}`;
+
     tbody.innerHTML = '';
     products.forEach(p => {
         const row = document.createElement('tr');
-        // Amount is floored to a whole number — the underlying rate math is a continuous
+        // Amount is floored to a whole number; the underlying rate math is a continuous
         // approximation (same steady-state model used throughout this calculator), but you
         // can't actually receive a fractional item; whatever fraction is left over represents
         // a batch still in progress at the moment the goal is reached. Worth is then computed
         // from THAT same whole number (amount * sell price), not the unrounded rate total, so
-        // the two columns always reconcile by hand-multiplication — Profit/sec stays net of
+        // the two columns always reconcile by hand-multiplication; Profit stays net of
         // ingredient costs (matches Total Time/Amount Produced above), so it won't equal Worth
         // / time; they're intentionally different figures (gross vs. net).
         const wholeAmount = Math.floor(p.total_units);
@@ -362,7 +382,7 @@ function renderProductBreakdown(goalResult) {
             <td>${p.item_name}</td>
             <td>${p.facility}</td>
             <td>${wholeAmount.toLocaleString()}</td>
-            <td>${formatNumber(p.rate_per_second)}</td>
+            <td>${formatNumber(p.rate_per_second * multiplier)}</td>
             <td>${formatNumber(worth)}</td>
         `;
         tbody.appendChild(row);
@@ -382,7 +402,7 @@ function renderProductBreakdown(goalResult) {
     });
 }
 
-// Renders `goalResult.seed_requirements` — one row per grower crop actually being planted, how
+// Renders `goalResult.seed_requirements`; one row per grower crop actually being planted, how
 // many times each of its dedicated plots needs replanting over the goal's total time, so a
 // player can have enough seeds ready ahead of time. Never includes processor facilities; they
 // aren't planted (see `SeedRequirement` in models.rs).
@@ -408,7 +428,7 @@ function renderSeedsNeeded(goalResult) {
     `).join('');
 }
 
-// Fixed display order for environment groups — matches ENVIRONMENT_BUILDINGS's mode order in
+// Fixed display order for environment groups; matches ENVIRONMENT_BUILDINGS's mode order in
 // optimizer.rs (Heat Furnace's two modes, then Cooling Unit's two, then Sunlamp's one).
 const ENVIRONMENT_MODE_ORDER = ['Warm', 'Scorching', 'Cool', 'Freeze', 'Adequate'];
 
@@ -428,7 +448,7 @@ function facilityPlanTable(rows) {
                     <tr class="status-${step.status}">
                         <td>${step.facility}</td>
                         <td>${step.facility_count}</td>
-                        <td>${step.item_name || '—'}</td>
+                        <td>${step.item_name || '-'}</td>
                         <td>${step.reason}</td>
                     </tr>
                 `).join('')}</tbody>
@@ -439,11 +459,11 @@ function facilityPlanTable(rows) {
 
 // Splits one environment mode's rows across its individual building units. Unlike the old
 // preset-based version, each unit's exact facility-type capacity now comes straight from the
-// solver's own geometric packing (`assignment.layouts[i]` — see `FacilityPlacement` in
+// solver's own geometric packing (`assignment.layouts[i]`; see `FacilityPlacement` in
 // models.rs), not an evenly-divided share, since real per-building layouts aren't always
 // identical (e.g. one Cooling Unit might host Farmland+Woodland while another hosts only
 // Farmland). Still greedily fills each unit's per-facility-type capacity in row order, splitting
-// a single row across units when its count exceeds one unit's remaining capacity — the exact
+// a single row across units when its count exceeds one unit's remaining capacity; the exact
 // split is arbitrary (any unit can host any plot of the crops sharing its mode), only the
 // per-unit totals (and the diagram's exact positions) are load-bearing.
 function splitByEnvironmentUnit(rows, assignmentsForMode) {
@@ -471,7 +491,7 @@ function splitByEnvironmentUnit(rows, assignmentsForMode) {
         }
     });
 
-    // A building's geometric layout is capacity, not a production guarantee — a facility type can
+    // A building's geometric layout is capacity, not a production guarantee; a facility type can
     // sit unused in a unit's coverage if there wasn't enough demand to fill every plot the fill
     // loop above offered it. Drawing that unused capacity in the diagram would show the player
     // squares they shouldn't actually place anything in (and that don't match this unit's own
@@ -498,7 +518,7 @@ function splitByEnvironmentUnit(rows, assignmentsForMode) {
     return units.filter(u => u.rows.length > 0);
 }
 
-// Fixed color per environment-gated facility type, used by the layout diagram below — purely
+// Fixed color per environment-gated facility type, used by the layout diagram below; purely
 // categorical (not theme-dependent), so it stays distinguishable in both light and dark mode.
 const ENVIRONMENT_FACILITY_COLORS = {
     'Farmland': '#c9a24d',
@@ -515,7 +535,7 @@ const ENVIRONMENT_BUILDING_SIZE = 2.0;
 const ENVIRONMENT_COVERAGE_RADIUS = 4.5;
 
 // Renders a simple SVG diagram of one building instance's exact chosen layout (from
-// `assignment.layouts[i]`) — literally the solver's own placements, not an invented
+// `assignment.layouts[i]`); literally the solver's own placements, not an invented
 // illustration: a dashed square for the coverage zone, a solid square for the building itself,
 // and one colored rectangle per hosted facility, with a small legend mapping color to facility
 // name (there's no room for full labels at this scale).
@@ -524,7 +544,7 @@ function renderEnvironmentDiagram(layout) {
     const margin = 5;
     const half = ENVIRONMENT_COVERAGE_RADIUS + margin;
     const buildingCenter = ENVIRONMENT_BUILDING_SIZE / 2;
-    // Center the viewBox on the building's own center, not world origin (0,0) — the building sits
+    // Center the viewBox on the building's own center, not world origin (0,0); the building sits
     // at (0,0)-(size,size), so its center (and the coverage zone centered on it) is offset from
     // the origin. Centering the viewBox on the origin instead made the whole diagram look
     // consistently shifted toward one corner.
@@ -558,10 +578,10 @@ function renderEnvironmentDiagram(layout) {
     `;
 }
 
-// Renders `plan.coin_items` (one row per facility+product — see `PlanStep` in models.rs). Rows
+// Renders `plan.coin_items` (one row per facility+product; see `PlanStep` in models.rs). Rows
 // for a crop that needs a growing environment (Cool/Warm/Freeze/Scorching/Adequate) are pulled
-// out into their own "Environment: X" group first — regardless of whether they're grown on
-// Farmland or Woodland — so it's obvious at a glance which facilities share the same environment
+// out into their own "Environment: X" group first; regardless of whether they're grown on
+// Farmland or Woodland; so it's obvious at a glance which facilities share the same environment
 // building, instead of that connection being spelled out in each row's own text. When a mode
 // needs more than one building unit, that group splits into one table per unit (see
 // `splitByEnvironmentUnit`) so it's clear which crops go in which physical building. Everything
@@ -629,7 +649,29 @@ function renderFacilityPlan(plan) {
     container.innerHTML = environmentSections + categorySections;
 }
 
-// Render a successfully computed plan: rate summary + facility plan table. Goal-independent —
+// Re-renders "Your Rate" from `lastPlan` at whichever unit is currently selected in the
+// `#rate-unit` dropdown; called after a fresh plan and again whenever the user switches units, so
+// switching units never needs a facility-allocation re-solve.
+function updateRateDisplay() {
+    if (!lastPlan || !lastPlan.success) return;
+    const unit = document.getElementById('rate-unit').value;
+    const { multiplier, suffix } = RATE_UNIT_SECONDS[unit] || RATE_UNIT_SECONDS.second;
+    const label = CURRENCY_LABELS[lastPlan.currency] || lastPlan.currency;
+    document.getElementById('plan-rate').textContent =
+        `${formatNumber(lastPlan.rate_per_second * multiplier)} ${label}${suffix}`;
+}
+
+// Re-renders every rate-unit-dependent display ("Your Rate" and the Product Breakdown table's
+// Profit column) from the already-computed `lastPlan`/`lastGoalResult`; the `#rate-unit` change
+// listener target, so switching units never needs a re-solve.
+function updateRateUnitDisplays() {
+    updateRateDisplay();
+    if (lastGoalResult) {
+        renderProductBreakdown(lastGoalResult);
+    }
+}
+
+// Render a successfully computed plan: rate summary + facility plan table. Goal-independent,
 // called once per Calculate click (or facility/currency/module change), not on every goal
 // keystroke.
 function displayPlan(plan) {
@@ -650,9 +692,11 @@ function displayPlan(plan) {
     resultsContent.style.display = 'block';
     goalSection.style.display = 'block';
 
-    const label = CURRENCY_LABELS[plan.currency] || plan.currency;
-    document.getElementById('plan-rate').textContent = `${formatNumber(plan.rate_per_second)} ${label}/sec`;
+    updateRateDisplay();
     updateCurrencyLabels(plan.currency);
+
+    document.getElementById('plan-explored-hint').textContent =
+        `Explored ${plan.candidates_evaluated} candidate item${plan.candidates_evaluated === 1 ? '' : 's'} across ${plan.trial_solves} trial solve${plan.trial_solves === 1 ? '' : 's'} to find this plan.`;
 
     renderFacilityPlan(plan);
 
@@ -660,9 +704,10 @@ function displayPlan(plan) {
 }
 
 // Render a time-to-goal result: Total Time / Amount Produced summary + Product Breakdown. Called
-// live on every goal-field keystroke once a plan exists — cheap, no facility-allocation re-solve.
+// live on every goal-field keystroke once a plan exists; cheap, no facility-allocation re-solve.
 function displayGoal(goalResult) {
     if (!goalResult.success) {
+        lastGoalResult = null;
         document.getElementById('total-time').textContent = '-';
         document.getElementById('amount-produced').textContent = '-';
         document.getElementById('product-breakdown-section').style.display = 'none';
@@ -671,6 +716,7 @@ function displayGoal(goalResult) {
         return;
     }
 
+    lastGoalResult = goalResult;
     document.getElementById('total-time').textContent = goalResult.total_time_formatted;
     document.getElementById('amount-produced').textContent = formatNumber(goalResult.amount_produced);
 
@@ -678,7 +724,7 @@ function displayGoal(goalResult) {
     renderSeedsNeeded(goalResult);
 }
 
-// Solve for the best achievable plan (facilities + currency + modules) — the heavier computation,
+// Solve for the best achievable plan (facilities + currency + modules); the heavier computation,
 // triggered explicitly by the Calculate button or Enter in a facility/module field.
 async function runFindPlan() {
     if (!wasmReady) {
@@ -719,7 +765,7 @@ async function runFindPlan() {
     }
 }
 
-// Compute time-to-goal against the already-computed `lastPlan` — cheap, safe to call on every
+// Compute time-to-goal against the already-computed `lastPlan`; cheap, safe to call on every
 // keystroke of the goal-amount fields. No-op until a plan exists.
 function runTimeToGoal() {
     if (!lastPlan || !lastPlan.success) return;
@@ -735,6 +781,159 @@ function runTimeToGoal() {
     }
 }
 
+// --- Facility recipe reference modal ----------------------------------------------------
+// A static reference table of every recipe in the game data, grouped by facility. Unlike the
+// facility input cards, this isn't tied to owned facility counts or levels; it just lists what's
+// possible to unlock. Recipe data comes from `get_all_items()` (see wasm.rs), which dumps every
+// `ProductionItem` unfiltered.
+
+const RECIPE_MODULE_LABELS = {
+    ecological_module: 'Ecological Module',
+    kitchen_module: 'Kitchen Module',
+    mineral_detector: 'Mineral Detector',
+    crafting_module: 'Crafting Module',
+};
+
+// Cached after the first render, since the underlying data never changes for a given wasm build.
+let recipesRendered = false;
+
+function formatRecipeCurrency(currency) {
+    return currency === 'bud_tickets' ? 'Bud Tickets' : 'Coins';
+}
+
+// Mirrors the Rust `format_time` helper in wasm.rs (hours/minutes/seconds, dropping leading
+// zero units) so times read the same way here as they would in-game.
+function formatRecipeTime(seconds) {
+    const total = Math.round(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+}
+
+function formatRecipeInputs(recipe) {
+    if (recipe.raw_materials && recipe.raw_materials.length > 0) {
+        const amounts = recipe.required_amount || [];
+        return recipe.raw_materials
+            .map((mat, i) => `${amounts[i] ?? '?'}x ${mat}`)
+            .join(', ');
+    }
+    if (recipe.cost && recipe.cost > 0) {
+        return `Plant cost: ${recipe.cost}`;
+    }
+    return '-';
+}
+
+function formatRecipeYield(recipe) {
+    let text = `${recipe.yield_amount}`;
+    if (recipe.byproduct) {
+        const [name, amount] = recipe.byproduct;
+        text += ` <span class="hint small">(+${amount} ${name})</span>`;
+    }
+    return text;
+}
+
+function formatRecipeModule(recipe) {
+    if (!recipe.module_requirement) return '-';
+    const [name, level] = recipe.module_requirement;
+    const label = RECIPE_MODULE_LABELS[name] || name;
+    return `${label} Lv.${level}`;
+}
+
+// Renders one table per facility (grouped into category sections, same grouping/order as the
+// facility input cards), each listing every recipe available at that facility sorted by required
+// level then name.
+function renderRecipeTables(recipes) {
+    const container = document.getElementById('facilities-modal-container');
+
+    const byFacility = new Map();
+    recipes.forEach(r => {
+        if (!byFacility.has(r.facility)) byFacility.set(r.facility, []);
+        byFacility.get(r.facility).push(r);
+    });
+    byFacility.forEach(list => {
+        list.sort((a, b) => a.facility_level - b.facility_level || a.name.localeCompare(b.name));
+    });
+
+    container.innerHTML = FACILITY_CATEGORIES.map(category => {
+        const facilitiesInCategory = FACILITIES.filter(f => f.category === category && byFacility.has(f.name));
+        if (facilitiesInCategory.length === 0) return '';
+
+        const tables = facilitiesInCategory.map(f => {
+            const rows = byFacility.get(f.name).map(r => `
+                <tr>
+                    <td>${r.name}</td>
+                    <td>${r.facility_level}</td>
+                    <td>${formatRecipeInputs(r)}</td>
+                    <td>${formatRecipeYield(r)}</td>
+                    <td>${formatRecipeTime(r.production_time)}</td>
+                    <td>${r.sell_value} ${formatRecipeCurrency(r.sell_currency)}</td>
+                    <td>${formatRecipeModule(r)}</td>
+                </tr>
+            `).join('');
+
+            return `
+                <div class="facility-recipe-table">
+                    <h4>${f.name}</h4>
+                    <div class="table-wrapper">
+                        <table class="recipe-table">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Level</th>
+                                    <th>Inputs</th>
+                                    <th>Yield</th>
+                                    <th>Time</th>
+                                    <th>Sell</th>
+                                    <th>Module</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="facility-category">
+                <h4 class="facility-category-title">${category}</h4>
+                ${tables}
+            </div>
+        `;
+    }).join('');
+}
+
+window.showFacilities = function() {
+    document.getElementById('facilitiesModal').classList.add('show');
+    if (recipesRendered) return;
+    if (!wasmReady) {
+        document.getElementById('facilities-loading-hint').textContent = 'Optimizer not ready. Please wait...';
+        return;
+    }
+    try {
+        const recipes = JSON.parse(get_all_items());
+        renderRecipeTables(recipes);
+        recipesRendered = true;
+        document.getElementById('facilities-loading-hint').style.display = 'none';
+    } catch (error) {
+        console.error('Failed to load recipe data:', error);
+        document.getElementById('facilities-loading-hint').textContent = 'Failed to load recipe data. Please refresh the page.';
+    }
+}
+
+window.closeFacilities = function() {
+    document.getElementById('facilitiesModal').classList.remove('show');
+}
+
+window.closeFacilitiesOnBackdrop = function(event) {
+    if (event.target.id === 'facilitiesModal') {
+        closeFacilities();
+    }
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
     const savedData = readStorage();
@@ -747,13 +946,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('optimize-btn').addEventListener('click', runFindPlan);
     document.getElementById('clear-saved-btn').addEventListener('click', clearSavedInputs);
+    document.getElementById('rate-unit').addEventListener('change', updateRateUnitDisplays);
 
-    // Goal fields update live — no need to re-run the facility-allocation solve just because the
+    // Goal fields update live; no need to re-run the facility-allocation solve just because the
     // goal amount changed.
     document.getElementById('target-amount').addEventListener('input', runTimeToGoal);
     document.getElementById('current-amount').addEventListener('input', runTimeToGoal);
 
-    // Changing currency invalidates the last plan (it was solved for the other currency) — hide
+    // Changing currency invalidates the last plan (it was solved for the other currency); hide
     // the goal section until Calculate is pressed again rather than show a stale rate/plan.
     document.querySelectorAll('input[name="currency"]').forEach(radio => {
         radio.addEventListener('change', () => {
@@ -762,7 +962,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Allow Enter key to trigger a full plan recalculation — but not in the goal fields, which
+    // Allow Enter key to trigger a full plan recalculation; but not in the goal fields, which
     // already update live on every keystroke via the listeners above. Facility tier inputs are
     // excluded here since they're already covered by the delegated listener in
     // `attachFacilityTierHandlers` (their rows come and go, so a per-element listener attached

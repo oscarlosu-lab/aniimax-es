@@ -481,6 +481,22 @@ p {
     color: var(--success);
 }
 
+.rate-unit-select {
+    margin-top: 0.5rem;
+    padding: 0.2rem 0.4rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.rate-unit-select:focus {
+    outline: none;
+    border-color: var(--text);
+}
+
 /* Byproduct bonus rows, appended to the bottom of the Product Breakdown table */
 #product-breakdown-table tbody tr.byproduct-row {
     color: var(--warning);
@@ -687,8 +703,8 @@ tbody tr:first-child td {
     font-weight: bold;
 }
 
-/* Facility plan tables (one per category — see renderFacilityPlan in app.js): status reflects
-   role (producing/idle/not needed), not row position — override the generic "highlight first
+/* Facility plan tables (one per category, see renderFacilityPlan in app.js): status reflects
+   role (producing/idle/not needed), not row position, overriding the generic "highlight first
    row" rule above so it doesn't imply the first facility listed is special. */
 .facility-plan-table tbody tr:first-child td {
     color: inherit;
@@ -751,8 +767,8 @@ tbody tr:first-child td {
     border-radius: 2px;
 }
 
-/* Recipe reference tables (facilities.html): one table per facility, listed row order reflects
-   level/name sort, not importance — same override as the facility-plan table above. */
+/* Recipe reference tables (facility recipe modal): one table per facility, listed row order
+   reflects level/name sort, not importance, same override as the facility-plan table above. */
 .recipe-table tbody tr:first-child td {
     color: inherit;
     font-weight: normal;
@@ -863,6 +879,10 @@ footer {
     max-width: 600px;
     width: 100%;
     margin: 2rem auto;
+}
+
+.modal-content.wide {
+    max-width: 1100px;
 }
 
 .modal-header {

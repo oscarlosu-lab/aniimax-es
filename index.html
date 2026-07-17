@@ -11,7 +11,7 @@
     <header>
         <h1>aniimax</h1>
         <div class="header-buttons">
-            <a class="toggle-button" href="facilities.html">facilities</a>
+            <button class="toggle-button" onclick="showFacilities()" id="facilitiesToggle">facilities</button>
             <button class="toggle-button" onclick="showMath()" id="mathToggle">math</button>
             <button class="toggle-button" onclick="showHelp()" id="helpToggle">help</button>
             <button class="toggle-button" onclick="toggleTheme()" id="themeToggle">light</button>
@@ -28,7 +28,7 @@
 
                 <p class="hint">Set your facilities and pick a currency, and the calculator shows the fastest achievable rate and what each facility should do. No target is needed for that. Enter a goal further down once you have a plan, and it updates instantly.</p>
 
-                <p class="hint small">Your inputs are saved automatically in this browser only (no account, nothing sent anywhere). They'll still be here next time you open this page. <button type="button" id="clear-saved-btn" class="toggle-button">Clear saved values</button></p>
+                <p class="hint small">Your inputs are saved automatically in this browser. They'll still be here next time you open this page. <button type="button" id="clear-saved-btn" class="toggle-button">Clear saved values</button></p>
 
                 <div class="config-group">
                     <div class="input-row">
@@ -53,14 +53,12 @@
 
                 </div>
 
-                <p class="hint small">Only one currency is optimized at a time, not jointly. Crafting Table and Claw Game Cooker recipes that yield a currency you didn't pick are simply excluded from that run. Wood Blocks/Mineral Sand output is shown as a byproduct alongside your goal once you enter one, and the checkbox above can guarantee its maximum rate.</p>
-
                 <h3>Facilities</h3>
                 <p class="hint">Set the count and level for each facility you have.</p>
 
                 <!-- Facility cards are generated dynamically by app.js from the FACILITIES config,
                      grouped into category sections (Materials / Aniimo Materials / Materials
-                     Processing) — so new facilities can be added without editing this file. -->
+                     Processing), so new facilities can be added without editing this file. -->
                 <div class="facilities-container" id="facilities-grid"></div>
 
                 <h3>Item Upgrade Modules</h3>
@@ -117,8 +115,14 @@
                             <div class="summary-item">
                                 <span class="summary-label">Your Rate</span>
                                 <span class="summary-value" id="plan-rate">-</span>
+                                <select id="rate-unit" class="rate-unit-select">
+                                    <option value="second">per second</option>
+                                    <option value="hour">per hour</option>
+                                    <option value="day">per day</option>
+                                </select>
                             </div>
                         </div>
+                        <p class="hint small" id="plan-explored-hint"></p>
                     </div>
 
                     <div class="production-steps">
@@ -162,7 +166,6 @@
 
                         <div class="production-steps" id="product-breakdown-section" style="display: none;">
                             <h3>Product Breakdown</h3>
-                            <p class="hint small">Every item actually produced over the full plan. Amount is rounded down to whole items (no fractional units); Total Worth is that amount at sell price. Profit/sec is net of ingredient costs, so it won't exactly match Total Worth divided by time. That's expected: they're gross vs. net figures.</p>
                             <div class="table-wrapper">
                                 <table id="product-breakdown-table">
                                     <thead>
@@ -170,7 +173,7 @@
                                             <th>Item</th>
                                             <th>Facility</th>
                                             <th>Amount</th>
-                                            <th>Profit/sec</th>
+                                            <th id="product-breakdown-rate-header">Profit/sec</th>
                                             <th>Total Worth</th>
                                         </tr>
                                     </thead>
@@ -181,7 +184,6 @@
 
                         <div class="production-steps" id="seeds-needed-section" style="display: none;">
                             <h3>Seeds Needed</h3>
-                            <p class="hint small">How many times each crop needs to be replanted over the full plan, so you can have enough seeds ready ahead of time. Only covers Farmland and Woodland — mined and Aniimo-dispatched materials don't need seeds, and neither do processed items.</p>
                             <div class="table-wrapper">
                                 <table id="seeds-needed-table">
                                     <thead>
@@ -207,6 +209,21 @@
         </footer>
     </div>
 
+    <!-- Facilities Modal -->
+    <div id="facilitiesModal" class="modal" onclick="closeFacilitiesOnBackdrop(event)">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>Facility Recipes</h2>
+                <button class="close-button" onclick="closeFacilities()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="hint">Every recipe in the game data, grouped by facility. This is a reference table, not tied to your owned facility counts or levels.</p>
+                <p class="hint small" id="facilities-loading-hint">Loading recipe data...</p>
+                <div id="facilities-modal-container" class="facilities-container"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Math Modal -->
     <div id="mathModal" class="modal" onclick="closeMathOnBackdrop(event)">
         <div class="modal-content modal-wide">
@@ -220,19 +237,25 @@
                 <div class="math-block">\[ \text{profit}_{\text{batch}} = (\text{yield} \times \text{sell_price}) - \text{raw_cost} \]</div>
                 <p>Dividing by batch time gives a per-second rate, but that rate alone doesn't say how much of each facility one batch actually needs. For that we track <strong>utilization</strong>: batches per second at this item's own facility, plus the same for every facility touched anywhere upstream in its ingredient tree (e.g. soy_sauce_tofu pulls from both Bouncy Brew Keg and Carousel Mill, which both draw soybean from Farmland).</p>
 
-                <h3>2. Joint Facility Allocation</h3>
-                <p>Every owned facility can be shared by several candidate items at once, so picking each item's rate independently would double-count shared capacity (two recipes both claiming the same Farmland soybean plots as if the other didn't exist). Instead we solve one linear program across every candidate item and every owned facility simultaneously:</p>
-                <div class="math-block">\[ \max \sum_i \text{profit}_{\text{batch},i} \cdot x_i \quad \text{s.t.} \quad \sum_i \text{utilization}_{i,f} \cdot x_i \leq \text{capacity}_f \ \ \forall f \]</div>
-                <p>Where \(x_i\) is item \(i\)'s batches/sec and \(f\) ranges over every owned facility. This is solved exactly (not greedily) with an off-the-shelf simplex solver, so the result is the provably-best combination of rates achievable given shared upstream supply.</p>
+                <h3>2. Environment Coverage</h3>
+                <p>Some crops need a growing environment (Cool/Warm/Freeze/Scorching/Adequate), supplied by Heat Furnace/Cooling Unit/Sunlamp buildings. Each building covers a fixed 2D area around it, so how many plots of each facility type it can cover is an exact geometric packing problem, solved once up front per owned building using each candidate item's standalone profit-per-plot to prioritize which types get coverage. This produces a hard cap on how much of each covered facility type is usable, feeding into the allocation below as an extra capacity limit.</p>
 
-                <h3>3. Rounding to Whole Units: Growers</h3>
+                <h3>3. Joint Facility Allocation</h3>
+                <p>Every owned facility can be shared by several candidate items at once, so picking each item's rate independently would double-count shared capacity (two recipes both claiming the same Farmland soybean plots as if the other didn't exist). A facility can also be owned across multiple levels (e.g. some plots upgraded further than others); a higher-level plot can run a lower-level recipe too, so capacity is tracked per level threshold rather than as one flat total. Instead of picking rates independently, we solve one linear program across every candidate item and every owned facility simultaneously:</p>
+                <div class="math-block">\[ \max \sum_i \text{profit}_{\text{batch},i} \cdot x_i \quad \text{s.t.} \quad \sum_i \text{utilization}_{i,f} \cdot x_i \leq \text{capacity}_f \ \ \forall f \]</div>
+                <p>Where \(x_i\) is item \(i\)'s batches/sec and \(f\) ranges over every owned facility and level threshold, plus each environment coverage cap from step 2. This is solved exactly (not greedily) with an off-the-shelf simplex solver, so the result is the provably-best combination of rates achievable given shared upstream supply and coverage.</p>
+
+                <h3>4. Rounding to Whole Units: Growers</h3>
                 <p>The linear program's solution is continuous, e.g. "62% of Farmland's soybean plots." A grower facility (Farmland, Woodland, Mineral Pile, and similar) can't actually run a fractional plot; each unit commits to one crop for its whole cycle. So every grower facility's fractional shares get converted to whole counts using the largest-remainder method (the same apportionment technique used to allocate parliament seats), landing as close to the true fractions as an integer solution allows.</p>
                 <p>Each item's final rate is then capped by what its grower facilities can actually supply once rounded, taking the minimum against the continuous rate rather than recomputing from scratch, since the continuous solve already accounted for fair sharing at every processor a chain passes through.</p>
 
-                <h3>4. Whole-Unit Dedication: Processors</h3>
-                <p>A processor facility (Carousel Mill, Claw Game Cooker, and similar) isn't tied to one crop for a whole cycle the way a grower is, but it still can't be time-shared between two different recipes in practice. A player sets one up to run one recipe continuously, not a "38% of the time" split. When the linear program's solution would ask a processor facility to serve more distinct recipes than it has units, we keep only the most profitable candidates (one dedicated unit each) and drop the rest, then re-solve so their freed-up upstream supply finds a genuine next-best use rather than being silently discarded.</p>
+                <h3>5. Whole-Unit Dedication: Processors</h3>
+                <p>A processor facility (Carousel Mill, Claw Game Cooker, and similar) isn't tied to one crop for a whole cycle the way a grower is, but it still can't be time-shared between recipes in practice. A player sets one up to run one recipe continuously, not a "38% of the time" split. If a chain needs two different items made at the same facility type (an intermediate step plus the final item), each one needs its own dedicated unit, not one unit alternating. When the linear program's solution would ask a processor facility to serve more distinct recipes than it has units, we keep only the most profitable candidates (one dedicated unit each) and drop the rest, then re-solve so their freed-up upstream supply finds a genuine next-best use rather than being silently discarded.</p>
 
-                <h3>5. Time to Reach a Goal</h3>
+                <h3>6. Refining the Choice</h3>
+                <p>Environment coverage (step 2) is priced from each item's own standalone economics, before the full joint solve runs. Occasionally that naive pricing favors a chain that turns out worse once every other constraint is accounted for, either because it never ends up producing anything once the rest of the plan settles, or because a competing chain would have used the same scarce coverage more effectively overall. After solving once, the algorithm checks which chains actually end up producing something, then tries excluding a losing candidate and re-solving; the exclusion is kept only if the resulting plan's real total is genuinely better.</p>
+
+                <h3>7. Time to Reach a Goal</h3>
                 <p>Once the plan's rates are settled, each item contributes nothing until its own lead time has passed (time for its first batch to clear the chain), then its steady rate after that:</p>
                 <div class="math-block">\[ \text{amount}(t) = \sum_i \text{rate}_i \cdot \max(0,\ t - \text{lead}_i) \]</div>
                 <p>This is monotonically non-decreasing in \(t\), so the smallest \(t\) reaching your target amount is found with a binary search rather than solving anything analytically.</p>
@@ -249,7 +272,7 @@
             </div>
             <div class="modal-body">
                 <h3>1. Pick a Target</h3>
-                <p>Choose Coins or Bud Tickets — only recipes that sell for that currency are considered. Wood Blocks/Mineral Sand aren't a separate target; they come as a byproduct of certain Woodland/Mineral Pile crops regardless of what you're optimizing for, and the "Prioritize Wood Blocks/Mineral Sand" checkbox can guarantee their maximum possible rate even at the cost of Coins/Bud Ticket profit.</p>
+                <p>Choose Coins or Bud Tickets; only recipes that sell for that currency are considered. Wood Blocks/Mineral Sand aren't a separate target; they come as a byproduct of certain Woodland/Mineral Pile crops regardless of what you're optimizing for, and the "Prioritize Wood Blocks/Mineral Sand" checkbox can guarantee their maximum possible rate even at the cost of Coins/Bud Ticket profit.</p>
 
                 <h3>2. Configure Facilities</h3>
                 <p>Set the count and level of each facility you have unlocked in Aniimo Homeland.</p>
@@ -265,7 +288,7 @@
 
                 <h3>Understanding Results</h3>
                 <ul>
-                    <li><strong>Your Rate</strong>: The best steady-state rate of your chosen target per second achievable with your current facilities</li>
+                    <li><strong>Your Rate</strong>: The best steady-state rate of your chosen target achievable with your current facilities, viewable per second, hour, or day</li>
                     <li><strong>What Each Facility Should Do</strong>: Which item to dedicate each owned facility to, running in parallel</li>
                     <li><strong>Total Time / Amount Produced</strong>: How long your goal takes, and the item-level breakdown of what gets made along the way</li>
                 </ul>
@@ -325,6 +348,7 @@
             if (e.key === 'Escape') {
                 closeHelp();
                 closeMath();
+                closeFacilities();
             }
         });
     </script>

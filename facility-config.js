@@ -1,14 +1,13 @@
-// Shared facility configuration, used by both the optimizer page (app.js) and the facilities
-// reference page (facilities.js) so the two stay in sync automatically.
+// Shared facility configuration, used by app.js for both the facility input cards and the
+// facility recipe reference modal, so the two stay in sync automatically.
 
 // Facility configuration. `name` must exactly match the facility string used throughout the
 // Rust data model (ProductionItem.facility / FacilityCounts keys) since it's sent verbatim as
 // the JSON key for each facility's count/level. Add new facilities here only; cards and input
 // handling are generated dynamically, no other file needs to change. `category` groups the cards
-// in the UI (see `FACILITY_CATEGORIES` below for display order) and mirrors the user-provided
-// facility list in BETA_NOTES.md section 11. `hasLevels: false` hides the Level input entirely
-// for facilities that don't level up in-game (confirmed against the game directly) — omit the
-// field (defaults to leveled) for any facility that does.
+// in the UI (see `FACILITY_CATEGORIES` below for display order). `hasLevels: false` hides the
+// Level input entirely for facilities that don't level up in-game; omit the field (defaults to
+// leveled) for any facility that does.
 export const FACILITIES = [
     {
         name: 'Farmland', slug: 'farmland', defaultCount: 1, category: 'Materials',
@@ -20,7 +19,7 @@ export const FACILITIES = [
     },
     {
         name: 'Mineral Pile', slug: 'mineral-pile', defaultCount: 1, category: 'Materials',
-        tooltip: "Lv.1: shell, quick shell&#10;Lv.2: clay&#10;Lv.3: quartz, quick quartz&#10;Lv.4: gem&#10;Currently the only confirmed source of Mineral Sand. (Times are estimated from workload, see BETA_NOTES.md)"
+        tooltip: "Lv.1: shell, quick shell&#10;Lv.2: clay&#10;Lv.3: quartz, quick quartz&#10;Lv.4: gem&#10;Currently the only confirmed source of Mineral Sand. Times are estimated from workload."
     },
     {
         name: 'Heat Furnace', slug: 'heat-furnace', defaultCount: 0, category: 'Environment', hasLevels: false,
@@ -84,12 +83,11 @@ export const FACILITIES = [
     },
 ];
 
-// Display order for facility categories — matches the user-provided facility list
-// (BETA_NOTES.md section 11). Auxiliary Facilities (Storage Unit, power/climate buildings) are
-// deliberately excluded here: they don't produce items, see section 11.
+// Display order for facility categories. Auxiliary facilities (Storage Unit, power/climate
+// buildings) are deliberately excluded here: they don't produce items.
 export const FACILITY_CATEGORIES = ['Materials', 'Environment', 'Aniimo Materials', 'Materials Processing'];
 
 // Facility name -> category, so other pages can group by the same categories as the facility
 // input cards (Materials/Aniimo Materials are grower facilities, Materials Processing is
-// processor facilities — see BETA_NOTES.md section 46 for why that split matters).
+// processor facilities).
 export const FACILITY_CATEGORY_BY_NAME = new Map(FACILITIES.map(f => [f.name, f.category]));
