@@ -17,27 +17,61 @@ const CURRENCY_LABELS = {
     bud_tickets: 'Bud Tickets',
 };
 
+// Per-facility owned tiers: `{ 'Farmland': [{count: 5, level: 3}, {count: 4, level: 5}], ... }`.
+// The single source of truth for what's owned — rendering reads FROM this, input edits write
+// BACK into it, and `getPlanInputValues()` sends it straight to the solver as-is. A player
+// commonly upgrades some but not all of their plots of one facility type (e.g. 5 Farmland at
+// level 3 and 4 more upgraded to level 5), so a facility can own more than one tier; facilities
+// that don't level up at all (`hasLevels: false`) only ever have exactly one.
+let facilityTiers = {};
+
+function defaultFacilityTiers() {
+    const tiers = {};
+    FACILITIES.forEach(f => {
+        tiers[f.name] = [{ count: f.defaultCount, level: 1 }];
+    });
+    return tiers;
+}
+
+// Renders one facility's tier rows (Count + Level inputs, a remove button once there's more than
+// one tier, and — only for facilities that level up — an "Add level" button) into its
+// `.facility-tiers` container. Called on initial render and again, for just that one facility,
+// whenever a tier is added or removed, so editing one facility never disturbs another's inputs.
+function renderTierRows(name) {
+    const f = FACILITIES.find(fac => fac.name === name);
+    const container = document.querySelector(`.facility-tiers[data-facility="${name}"]`);
+    if (!f || !container) return;
+    const tiers = facilityTiers[name];
+    const showRemove = tiers.length > 1;
+    container.innerHTML = tiers.map((tier, i) => `
+        <div class="facility-inputs tier-row" data-tier-index="${i}">
+            <div class="input-field">
+                <label>Count</label>
+                <input type="number" class="tier-count" value="${tier.count}" min="0" max="999">
+            </div>
+            ${f.hasLevels === false ? '' : `
+            <div class="input-field">
+                <label>Level</label>
+                <input type="number" class="tier-level" value="${tier.level}" min="1" max="10">
+            </div>
+            `}
+            ${showRemove ? '<button type="button" class="tier-remove-btn" title="Remove this level">&times;</button>' : ''}
+        </div>
+    `).join('');
+}
+
 // Build the facility-card inputs, grouped into a labeled section per category. Runs before other
-// DOM setup so the Enter-key listener attachment (which queries all inputs) picks up these
-// generated fields too.
+// DOM setup. Tier-row inputs and buttons are handled via event delegation (see
+// `attachFacilityTierHandlers`) rather than per-element listeners, since rows are added/removed
+// dynamically after this initial render.
 function renderFacilityCards() {
     const grid = document.getElementById('facilities-grid');
     grid.innerHTML = FACILITY_CATEGORIES.map(category => {
         const cards = FACILITIES.filter(f => f.category === category).map(f => `
             <div class="facility-card">
                 <h4>${f.name} <span class="info-icon" data-tooltip="${f.tooltip}">?</span></h4>
-                <div class="facility-inputs">
-                    <div class="input-field">
-                        <label for="facility-${f.slug}-count">Count</label>
-                        <input type="number" id="facility-${f.slug}-count" value="${f.defaultCount}" min="0" max="20">
-                    </div>
-                    ${f.hasLevels === false ? '' : `
-                    <div class="input-field">
-                        <label for="facility-${f.slug}-level">Level</label>
-                        <input type="number" id="facility-${f.slug}-level" value="1" min="1" max="10">
-                    </div>
-                    `}
-                </div>
+                <div class="facility-tiers" data-facility="${f.name}"></div>
+                ${f.hasLevels === false ? '' : '<button type="button" class="add-tier-btn" data-facility="' + f.name + '">+ Add level</button>'}
             </div>
         `).join('');
         return `
@@ -47,6 +81,62 @@ function renderFacilityCards() {
             </div>
         `;
     }).join('');
+    FACILITIES.forEach(f => renderTierRows(f.name));
+}
+
+// Delegated handlers for the facility grid, covering tier rows added/removed after initial
+// render: editing a Count/Level input updates `facilityTiers` and persists it; "+ Add level"
+// appends a new tier (guessing the next level up from the highest owned, capped at 10); "×"
+// removes a tier. Attach once, on the grid container, rather than per-row.
+function attachFacilityTierHandlers() {
+    const grid = document.getElementById('facilities-grid');
+
+    grid.addEventListener('input', (e) => {
+        const row = e.target.closest('.tier-row');
+        if (!row) return;
+        const container = e.target.closest('.facility-tiers');
+        const name = container.dataset.facility;
+        const idx = parseInt(row.dataset.tierIndex, 10);
+        const tier = facilityTiers[name][idx];
+        if (e.target.classList.contains('tier-count')) {
+            tier.count = numberOrDefault(e.target.value, 0);
+        } else if (e.target.classList.contains('tier-level')) {
+            tier.level = numberOrDefault(e.target.value, 1);
+        }
+        saveInputsToStorage();
+    });
+
+    grid.addEventListener('click', (e) => {
+        const addBtn = e.target.closest('.add-tier-btn');
+        if (addBtn) {
+            const name = addBtn.dataset.facility;
+            const tiers = facilityTiers[name];
+            const nextLevel = Math.min(10, Math.max(...tiers.map(t => t.level)) + 1);
+            tiers.push({ count: 1, level: nextLevel });
+            renderTierRows(name);
+            saveInputsToStorage();
+            return;
+        }
+        const removeBtn = e.target.closest('.tier-remove-btn');
+        if (removeBtn) {
+            const row = removeBtn.closest('.tier-row');
+            const container = removeBtn.closest('.facility-tiers');
+            const name = container.dataset.facility;
+            const idx = parseInt(row.dataset.tierIndex, 10);
+            facilityTiers[name].splice(idx, 1);
+            renderTierRows(name);
+            saveInputsToStorage();
+        }
+    });
+
+    // Enter key inside a tier input triggers a full plan recalculation, same as every other
+    // input — delegated (rather than the per-input listener loop used for static inputs) since
+    // tier inputs come and go as levels are added/removed.
+    grid.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && e.target.matches('input')) {
+            runFindPlan();
+        }
+    });
 }
 
 // --- Local persistence -----------------------------------------------------------------
@@ -55,26 +145,52 @@ function renderFacilityCards() {
 // hosted on GitHub Pages, since localStorage is scoped to the page's own origin.
 const STORAGE_KEY = 'aniimax-config-v1';
 
-// Every input ID whose value should be persisted. Facility inputs are derived from
-// FACILITIES so newly added facilities are covered automatically. Both currency radios are
-// listed (only the checked one actually restores anything, per the type === 'radio' branch
-// below) since they share a name but not an id.
+// Every plain input ID whose value should be persisted (facility tiers are saved separately —
+// see `facilityTiers`/`initFacilityTiers`, since they're a dynamic list rather than one fixed
+// element per facility). Both currency radios are listed (only the checked one actually
+// restores anything, per the type === 'radio' branch below) since they share a name but not an
+// id.
 function getPersistedFieldIds() {
-    const staticIds = [
+    return [
         'currency-coins', 'currency-bud-tickets',
         'target-amount', 'current-amount',
         'prioritize-byproducts', 'exclude-wheat',
         'ecological-module-level', 'kitchen-module-level',
         'mineral-detector-level', 'crafting-module-level'
     ];
-    const facilityIds = FACILITIES.flatMap(f => f.hasLevels === false
-        ? [`facility-${f.slug}-count`]
-        : [`facility-${f.slug}-count`, `facility-${f.slug}-level`]);
-    return [...staticIds, ...facilityIds];
+}
+
+// Reads and parses the saved config blob, or `null` if there isn't one / it's corrupt.
+function readStorage() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+        console.warn('Could not load saved inputs from localStorage:', e);
+        return null;
+    }
+}
+
+// Populates the module-level `facilityTiers` from a saved config blob (see `readStorage`),
+// falling back to defaults for any facility missing from it — covers both a fresh page load
+// (no save yet) and a facility newly added to `FACILITIES` since the user's last save.
+function initFacilityTiers(data) {
+    const defaults = defaultFacilityTiers();
+    const saved = (data && data.facilityTiers) || {};
+    facilityTiers = {};
+    FACILITIES.forEach(f => {
+        const tiers = saved[f.name];
+        facilityTiers[f.name] = Array.isArray(tiers) && tiers.length > 0
+            ? tiers.map(t => ({
+                count: numberOrDefault(t.count, 0),
+                level: f.hasLevels === false ? 1 : numberOrDefault(t.level, 1)
+            }))
+            : defaults[f.name];
+    });
 }
 
 function saveInputsToStorage() {
-    const data = {};
+    const data = { facilityTiers };
     getPersistedFieldIds().forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -87,16 +203,8 @@ function saveInputsToStorage() {
     }
 }
 
-function loadInputsFromStorage() {
-    let data;
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        data = JSON.parse(raw);
-    } catch (e) {
-        console.warn('Could not load saved inputs from localStorage:', e);
-        return;
-    }
+function loadInputsFromStorage(data) {
+    if (!data) return;
     getPersistedFieldIds().forEach(id => {
         if (!(id in data)) return;
         const el = document.getElementById(id);
@@ -109,7 +217,8 @@ function loadInputsFromStorage() {
     });
 }
 
-// Auto-save on every change to a persisted field.
+// Auto-save on every change to a persisted static field (facility tier inputs save themselves —
+// see `attachFacilityTierHandlers`).
 function attachAutoSave() {
     getPersistedFieldIds().forEach(id => {
         const el = document.getElementById(id);
@@ -153,16 +262,15 @@ function getCurrency() {
 // Get plan-level input values from the form (facilities/currency/modules/exclude-wheat/
 // prioritize-byproducts — nothing goal-related, since find_plan doesn't need a target).
 function getPlanInputValues() {
+    // `facilityTiers` is the live source of truth for owned counts (kept in sync with the DOM by
+    // `attachFacilityTierHandlers`), sent straight through as a list of tiers per facility — see
+    // `JsPlanInput::facilities` in wasm.rs for the shape (`[{count, level}, ...]` per facility).
     const facilities = {};
     FACILITIES.forEach(f => {
-        facilities[f.name] = {
-            // NaN-safe (not `|| fallback`): 0 is a legitimate "I don't own this facility" value,
-            // but `0 || f.defaultCount` would silently replace it with the default (often 1).
-            count: numberOrDefault(document.getElementById(`facility-${f.slug}-count`).value, f.defaultCount),
-            // Facilities that don't level up (hasLevels: false) have no Level input at all; always
-            // send level 1, which is what the game data assumes for them regardless.
-            level: f.hasLevels === false ? 1 : numberOrDefault(document.getElementById(`facility-${f.slug}-level`).value, 1)
-        };
+        facilities[f.name] = facilityTiers[f.name].map(t => ({
+            count: t.count,
+            level: f.hasLevels === false ? 1 : t.level
+        }));
     });
 
     const modules = {
@@ -630,9 +738,12 @@ function runTimeToGoal() {
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    const savedData = readStorage();
+    initFacilityTiers(savedData);
     renderFacilityCards();
-    loadInputsFromStorage();
+    loadInputsFromStorage(savedData);
     attachAutoSave();
+    attachFacilityTierHandlers();
     initWasm();
 
     document.getElementById('optimize-btn').addEventListener('click', runFindPlan);
@@ -653,9 +764,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Allow Enter key to trigger a full plan recalculation — but not in the goal fields, which
-    // already update live on every keystroke via the listeners above.
+    // already update live on every keystroke via the listeners above. Facility tier inputs are
+    // excluded here since they're already covered by the delegated listener in
+    // `attachFacilityTierHandlers` (their rows come and go, so a per-element listener attached
+    // once at startup wouldn't reach a tier added later).
     document.querySelectorAll('input').forEach(input => {
         if (input.id === 'target-amount' || input.id === 'current-amount') return;
+        if (input.closest('#facilities-grid')) return;
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 runFindPlan();
