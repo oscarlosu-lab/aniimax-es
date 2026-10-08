@@ -1,8 +1,9 @@
 // Register a language here and add its JSON catalog; English phrases are the source keys.
-const languages = { en: 'English', ru: 'Русский' };
+const languages = { en: 'English', ru: 'Русский', 'zh-TW': '繁體中文' };
 const catalogs = { en: {} };
 const templates = {};
 let language = 'en';
+let translateZhTw;
 let preferredLanguage = 'en';
 try { preferredLanguage = localStorage.getItem('aniimax-language') || 'en'; } catch (_) { /* Private browsing can disable storage. */ }
 if (!Object.hasOwn(languages, preferredLanguage)) preferredLanguage = 'en';
@@ -33,6 +34,7 @@ const attributes = ['title', 'aria-label', 'aria-description', 'placeholder', 'd
 
 export function translate(value) {
     if (language === 'en' || !value) return value;
+    if (language === 'zh-TW') return (translateZhTw ??= createZhTwTranslator(catalogs['zh-TW']))(value);
     const phrases = catalogs[language];
     const trimmed = value.trim();
     const translated = phrases[trimmed];
@@ -65,7 +67,104 @@ export function translate(value) {
     return value;
 }
 
+// Traditional Chinese (zh-TW) rules. translate() uses them only for zh-TW, so the other languages keep
+// the rules above. They differ from those rules:
+// - An unknown phrase is split at line breaks, ' · ' and ', ' as well, and list items join with '、'.
+// - A template with more fixed text is tried first.
+// - A text slot holds whole brackets and no slot break, so "A (x), B (y)" is not "{name} ({detail})".
+// Text that the zh-TW catalog does not hold, for example new English text, stays in English.
+const ZH_TW_SLOT = /\{[a-z_]+\}/gi;
+const ZH_TW_NUMBER_SLOT = /^\{(?:days|hours|minutes|seconds|n|level|trips|distance|plots)\}$/;
+const ZH_TW_SEPARATORS = ['\n', ' · ', '; ', '. ', ', '];
+const ZH_TW_JOINERS = { '. ': '', '; ': '；', ', ': '、' };
+// A text slot never holds one of these, unless the fixed text of its template holds it.
+const ZH_TW_SLOT_BREAKS = ['\n', ' · ', '; '];
+
+/** Gives a function that translates English text with the zh-TW `catalog`. */
+export function createZhTwTranslator(catalog) {
+    const zhTemplates = zhTwBuildTemplates(catalog);
+
+    function translateText(value) {
+        if (!value) return value;
+        const trimmed = value.trim();
+        const translated = Object.hasOwn(catalog, trimmed) ? catalog[trimmed] : '';
+        const result = translated || fillTemplate(trimmed) || translateParts(trimmed);
+        return result ? value.replace(trimmed, () => result) : value;
+    }
+
+    // Fills the first template that matches. Returns null when none matches.
+    function fillTemplate(trimmed) {
+        for (const template of zhTemplates) {
+            const match = trimmed.match(template.pattern);
+            if (!match) continue;
+            if (!template.textSlots.every((text, i) => !text || zhTwFits(match[i + 1], template.breaks))) continue;
+            let result = template.target;
+            template.slots.forEach((slot, i) => {
+                const captured = match[i + 1];
+                const whole = captured === trimmed ? captured : translateText(captured);
+                const value = whole === captured ? captured.split(', ').map(part => part === trimmed ? part : translateText(part)).join(', ') : whole;
+                result = result.replace(slot, () => value);
+            });
+            return result;
+        }
+        return null;
+    }
+
+    // Translates each part between the first separator that changes a part. Returns null when none does.
+    function translateParts(text) {
+        for (const separator of ZH_TW_SEPARATORS) {
+            if (!text.includes(separator)) continue;
+            const parts = text.split(separator);
+            // A sentence keeps its full stop, so the catalog entry for it still matches.
+            const sources = separator === '. ' ? parts.map((part, i) => part + (i < parts.length - 1 ? '.' : '')) : parts;
+            const localized = sources.map(part => translateText(part));
+            if (localized.every((part, i) => part === sources[i])) continue;
+            return localized.join(ZH_TW_JOINERS[separator] ?? separator);
+        }
+        return null;
+    }
+
+    return translateText;
+}
+
+function zhTwBuildTemplates(catalog) {
+    return Object.entries(catalog)
+        .filter(([source, target]) => /\{[a-z_]+\}/i.test(source) && /\{[a-z_]+\}/i.test(target))
+        // A template with more fixed text is more specific, so it comes first.
+        .sort(([left], [right]) => zhTwLiteralLength(right) - zhTwLiteralLength(left) || right.length - left.length)
+        .map(([source, target]) => {
+            const slots = [...source.matchAll(ZH_TW_SLOT)].map(match => match[0]);
+            const parts = source.split(ZH_TW_SLOT);
+            const pattern = parts.map((part, i) => escapeRegExp(part) + (i < slots.length
+                ? (ZH_TW_NUMBER_SLOT.test(slots[i]) ? '([0-9][0-9.,\\s]*)' : '(.+?)')
+                : '')).join('');
+            const textSlots = slots.map(slot => !ZH_TW_NUMBER_SLOT.test(slot));
+            // A separator in the fixed text, as in "{ability} Lv.{level} · {detail}", lets its slot hold one.
+            const breaks = ZH_TW_SLOT_BREAKS.filter(separator => !source.includes(separator));
+            return { pattern: new RegExp(`^${pattern}$`), slots, textSlots, breaks, target };
+        });
+}
+
+// A text slot holds whole brackets and no slot break.
+function zhTwFits(text, breaks) {
+    return zhTwBalanced(text) && !breaks.some(separator => text.includes(separator));
+}
+
+function zhTwBalanced(text) {
+    let depth = 0;
+    for (const char of text) {
+        if (char === '(') depth += 1;
+        else if (char === ')' && --depth < 0) return false;
+    }
+    return depth === 0;
+}
+
+function zhTwLiteralLength(source) {
+    return source.replace(ZH_TW_SLOT, '').length;
+}
+
 export function currentLocale() {
+    if (language === 'zh-TW') return 'zh-TW';
     return language === 'ru' ? 'ru-RU' : 'en-US';
 }
 
@@ -103,6 +202,11 @@ export function sourceAttribute(element, name) {
     const current = element.getAttribute(name);
     const previous = attributeSources.get(element)?.get(name);
     return previous?.shown === current ? previous.source : current;
+}
+
+// Translates `root` and everything in it now, without waiting for the MutationObserver.
+export function translateTree(root) {
+    update(root);
 }
 
 function update(root) {
