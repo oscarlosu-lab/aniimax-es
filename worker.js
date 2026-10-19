@@ -3,7 +3,7 @@
 // browser offer to kill the tab; every wasm call is dispatched through here instead, so the main
 // thread stays free to paint a progress indicator while a solve is in flight. See `web/app.js`'s
 // `callWorker` for the request/response contract this expects.
-import highsModule from './vendor/highs/highs.mjs';
+import highsModule from './vendor/highs/highs.js';
 
 // The page starts this worker as `worker.js?load=<page load time>` (see app.js), and the wasm
 // module is loaded with the same query and a revalidated fetch, so a page never pairs new page
@@ -12,8 +12,16 @@ import highsModule from './vendor/highs/highs.mjs';
 // before there's a handler for it.
 const load = new URL(import.meta.url).search;
 const ready = import('./pkg/aniimax.js' + load).then(async (pkg) => {
-    await pkg.default({ module_or_path: fetch(new URL('./pkg/aniimax_bg.wasm', import.meta.url), { cache: 'no-cache' }) });
-    return pkg;
+    try {
+        await pkg.default({ module_or_path: fetch(new URL('./pkg/aniimax_bg.wasm', import.meta.url), { cache: 'no-cache' }) });
+        return pkg;
+    } catch (err) {
+        console.error("DEBUG WORKER INIT ERR:", err);
+        throw err;
+    }
+}).catch(err => {
+    console.error("DEBUG WORKER IMPORT ERR:", err);
+    throw err;
 });
 
 // Handlers taking a single string argument and returning one; `find_plan` and

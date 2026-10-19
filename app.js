@@ -208,8 +208,8 @@ let lastGoalResult = null;
 // Display name for each optimizable currency. Coins are the only one since the full release
 // removed Bud Tickets; kept as a map so a plan's `currency` still resolves to its label.
 const CURRENCY_LABELS = {
-    coins: 'Home Coins',
-    aniimo_exp: 'Aniimo EXP',
+    coins: 'Monedas del Hogar',
+    aniimo_exp: 'EXP Aniimo',
     aniipods: 'Aniipods',
 };
 
@@ -217,10 +217,10 @@ const CURRENCY_LABELS = {
 // shown next to the currency label (e.g. "Coins/hour"). "Your Rate" is stored and computed
 // per-second throughout; this only affects how that one number is displayed.
 const RATE_UNIT_SECONDS = {
-    second: { multiplier: 1, suffix: '/sec' },
+    second: { multiplier: 1, suffix: '/s' },
     minute: { multiplier: 60, suffix: '/min' },
-    hour: { multiplier: 3600, suffix: '/hour' },
-    day: { multiplier: 86400, suffix: '/day' },
+    hour: { multiplier: 3600, suffix: '/h' },
+    day: { multiplier: 86400, suffix: '/día' },
 };
 
 // Per-facility owned tiers: `{ 'Farmland': [{count: 5, level: 3}, {count: 4, level: 5}], ... }`.
@@ -277,7 +277,7 @@ function renderFacilityCards() {
             <div class="facility-card">
                 <h4>${f.name} <span class="info-icon" data-tooltip="${f.tooltip}">?</span></h4>
                 <div class="facility-tiers" data-facility="${f.name}"></div>
-                ${f.hasLevels === false ? '' : '<button type="button" class="add-tier-btn" data-facility="' + f.name + '">+ Add level</button>'}
+                ${f.hasLevels === false ? '' : '<button type="button" class="add-tier-btn" data-facility="' + f.name + '">+ Añadir nivel</button>'}
             </div>
         `).join('');
         return `
@@ -460,12 +460,12 @@ async function shareCurrentConfig() {
         link.select();
         try {
             await navigator.clipboard.writeText(link.value);
-            status.textContent = 'Link copied. It includes your current setup.';
+            status.textContent = translate('Enlace copiado. Incluye tu configuración actual.');
         } catch (_) {
-            status.textContent = 'Copy the link above to share your setup.';
+            status.textContent = translate('Copia el enlace de arriba para compartir tu configuración.');
         }
     } catch (error) {
-        status.textContent = 'Could not create a share link for this setup.';
+        status.textContent = translate('No se pudo crear un enlace para compartir esta configuración.');
         console.warn('Could not create share link:', error);
     }
 }
@@ -598,7 +598,7 @@ function renderSimpleSummary() {
         ['Crafting Module', modules.crafting_module],
     ].map(([name, level]) => chip('', name, level > 0 ? `Lv.${level}` : 'not yet')).join('');
     const kinds = FACILITIES.filter(f => facilities[f.name][0].count > 0).length;
-    document.getElementById('simple-summary-title').textContent = `${kinds} facilities and 4 modules at RV ${homeLevel}`;
+    document.getElementById('simple-summary-title').textContent = `${kinds} instalaciones y 4 módulos en Casa rodante ${homeLevel}`;
     document.getElementById('simple-summary').innerHTML = `
         <p class="assume-title">Facilities</p>
         <div class="chip-grid">${built}</div>
@@ -1241,7 +1241,7 @@ function renderHomelandLayout(plan) {
     stopLayoutSim();
     setStep('layout', 'start');
     card.style.display = 'block';
-    document.getElementById('layout-summary').textContent = 'Laying out…';
+    document.getElementById('layout-summary').textContent = translate('Calculando distribución…');
     document.getElementById('layout-diagram').innerHTML = '';
     // Worked out in a worker of its own: a large homeland takes a few seconds.
     const { pieces, unplaced } = homelandPieces(plan, lastPlanInput);
@@ -1278,7 +1278,7 @@ function renderHomelandLayout(plan) {
         console.error('Homeland layout failed:', event.message || event);
         if (runId !== layoutRunId) return;
         stopLayout();
-        document.getElementById('layout-summary').textContent = 'The layout couldn\'t be worked out.';
+        document.getElementById('layout-summary').textContent = translate('No se pudo calcular la distribución.');
         setStep('layout', 'fail');
     };
     layoutWorker.postMessage({ pieces, cells: cells.map(({ x, y, w, h }) => ({ x, y, w, h })) });
@@ -1641,10 +1641,10 @@ function startProgress(input, runId) {
     // of it against every limit: the worker's steps map onto these (see `setStep`).
     const steps = [
         ...priorities.map(target => ({ key: `priority:${target}`, label: `Most ${priorityLabel(target, planContext.aniipod)}` })),
-        { key: 'plan', label: levelUp ? 'Fastest Level-Up' : priorities.length ? "Home Coins with What's Left" : 'Most Home Coins' },
-        { key: 'layout', label: 'Homeland Layout' },
+        { key: 'plan', label: levelUp ? 'Fastest Level-Up' : priorities.length ? "Home Coins with What's Left" : 'Máximas monedas del hogar' },
+        { key: 'layout', label: 'Diseño del Hogar' },
         { key: 'improve', label: 'Opportunities' },
-        { key: 'minimum', label: 'Minimum Team Plan' },
+        { key: 'minimum', label: 'Plan mínimo de equipo' },
     ];
     progress = { runId, steps: steps.map(step => ({ ...step, state: 'pending' })) };
     renderProgress();
@@ -1687,7 +1687,7 @@ function setStep(key, state, detail, proven) {
     renderProgress();
 }
 
-// What "proven best" means, shown on hovering it.
+// What "óptimo comprobado" means, shown on hovering it.
 const PROVEN_MEANS = 'No plan the model allows does better. Some of its options, such as how plots can be arranged around an environment building, come from a shortlist rather than every possibility.';
 
 // Whether a solve proved its plan the best the model allows, or ran out of time first.
@@ -1804,7 +1804,7 @@ function showRosterShortfall() {
     showSetupOnly();
     const anyAble = roster.some(a => a.count > 0 && Object.keys(a.abilities).length);
     // An empty roster's editor already says to add some.
-    document.getElementById('aniimo-collapsed-summary').textContent = anyAble ? 'No plan found with these Aniimo.' : '';
+    document.getElementById('aniimo-collapsed-summary').textContent = anyAble ? translate('No se encontró ningún plan con estos Aniimo.') : '';
 }
 
 // Of the results, only the Aniimo card, emptied of the last plan's team: its setup may be what
@@ -1919,7 +1919,7 @@ function renderRosterSummary(plan) {
         const places = [...where[i]].map(([place, n]) => Number.isInteger(n) && n > 1 ? `${place} ×${n}` : place).join(', ');
         const abilities = Object.entries(aniimo.abilities).map(([ability, level]) => `${abilityTag(ability)} ${level}`).join(' ');
         const letters = aniimo.personalities.map(personalityLetter).join('');
-        return `<tr><td data-label="Aniimo">${rosterLabel(aniimo, i)}<div class="hint small">${abilities} · ${letters}</div></td><td data-label="How many">${aniimo.count}</td><td data-label="Busy on average">${busy[i].toFixed(1)}</td><td data-label="Where">${places || '<span class="hint small">idle</span>'}</td></tr>`;
+        return `<tr><td data-label="Aniimo">${rosterLabel(aniimo, i)}<div class="hint small">${abilities} · ${letters}</div></td><td data-label="Cuántos">${aniimo.count}</td><td data-label="Ocupados en promedio">${busy[i].toFixed(1)}</td><td data-label="Dónde">${places || '<span class="hint small">idle</span>'}</td></tr>`;
     }).join('');
     document.getElementById('aniimo-summary').innerHTML = roster.length
         ? `<table class="aniimo-table"><thead><tr><th>Aniimo</th><th>How many</th><th>Busy on average</th><th>Where</th></tr></thead><tbody>${rows}</tbody></table>
@@ -2346,8 +2346,8 @@ function levelUpCost() {
 // Why the level-up can't be planned, or null if it can.
 function levelUpUnavailable() {
     const target = levelUpTarget();
-    if (target > MAX_HOME_LEVEL) return `RV ${MAX_HOME_LEVEL} is the top level, so there's no level-up to plan.`;
-    if (!LEVEL_UP_COSTS[target]) return `There's no level-up cost for RV ${target}.`;
+    if (target > MAX_HOME_LEVEL) return `Casa rodante ${MAX_HOME_LEVEL} es el nivel máximo, por lo que no hay subida de nivel para planificar.`;
+    if (!LEVEL_UP_COSTS[target]) return `No hay coste de subida de nivel para Casa rodante ${target}.`;
     return null;
 }
 
@@ -2388,7 +2388,7 @@ function renderStrategy() {
     const stockDetails = document.getElementById('level-up-stock');
     const unavailable = levelUpUnavailable();
     if (unavailable) {
-        costEl.innerHTML = `<p class="level-up-note">${unavailable} Plans will go for the most Home Coins.</p>`;
+        costEl.innerHTML = `<p class="level-up-note">${unavailable} El plan buscará obtener el máximo de Monedas del Hogar.</p>`;
         stockDetails.style.display = 'none';
         return;
     }
@@ -2473,32 +2473,32 @@ function renderLevelUp(plan) {
     const label = document.getElementById('level-up-label');
     const time = document.getElementById('level-up-time');
     const lines = document.getElementById('level-up-lines');
-    label.textContent = `RV ${context.target} level-up`;
+    label.textContent = `SUBIDA DE NIVEL CASA RODANTE ${context.target}`;
     const report = plan.level_up;
     if (context.unavailable) {
         time.textContent = '-';
-        lines.innerHTML = `<p class="level-up-note">${context.unavailable} This plan is for the most Home Coins.</p>`;
+        lines.innerHTML = `<p class="level-up-note">${context.unavailable} Este plan busca obtener el máximo de Monedas del Hogar.</p>`;
         return;
     }
     if (context.ready) {
-        time.textContent = 'Ready now';
-        lines.innerHTML = `<p class="level-up-note">You already have everything it costs. This plan is for the most Home Coins.</p>`;
+        time.textContent = translate('Listo ahora');
+        lines.innerHTML = `<p class="level-up-note">Ya posees todo lo que cuesta. Este plan busca obtener el máximo de Monedas del Hogar.</p>`;
         return;
     }
     if (!report) {
         const why = plan.level_up_note === 'unreachable'
-            ? `These facilities can't make everything it costs.`
-            : `The level-up couldn't be planned.`;
+            ? `Estas instalaciones no pueden fabricar todo lo que cuesta.`
+            : `No se pudo planificar la subida de nivel.`;
         time.textContent = '-';
-        lines.innerHTML = `<p class="level-up-note">${why} This plan is for the most Home Coins.</p>`;
+        lines.innerHTML = `<p class="level-up-note">${why} Este plan busca obtener el máximo de Monedas del Hogar.</p>`;
         return;
     }
-    time.textContent = `in ${formatDuration(report.seconds)}`;
+    time.textContent = `en ${formatDuration(report.seconds)}`;
     const { multiplier } = RATE_UNIT_SECONDS[select.value] || RATE_UNIT_SECONDS.second;
     const perUnit = perSecond => formatRate(perSecond * multiplier);
     const slowest = Math.max(...report.requirements.map(r => r.seconds ?? Infinity));
     const rows = report.requirements.map(r => {
-        const ready = r.seconds === null ? 'never' : r.seconds === 0 ? 'have it' : formatDuration(r.seconds);
+        const ready = r.seconds === null ? 'nunca' : r.seconds === 0 ? 'lo tengo' : formatDuration(r.seconds);
         const isSlowest = r.seconds !== null && r.seconds > 0 && r.seconds >= slowest * (1 - 1e-6);
         return `<tr${isSlowest ? ' class="slowest"' : ''}>
             <td>${ITEM_NAMES[r.name] || prettyItem(r.name)}</td>
@@ -2567,7 +2567,7 @@ function renderSeedTable(plan) {
     document.getElementById('seed-card-unit').textContent = `Seeds ${per}: one per planting, for every Farmland and Woodland crop in the plan.`;
     el.innerHTML = `
         <table>
-            <thead><tr><th>Crop</th><th>Plots</th><th>Seeds</th><th>Cost</th></tr></thead>
+            <thead><tr><th>Cultivo</th><th>Parcelas</th><th>Semillas</th><th>Coste</th></tr></thead>
             <tbody>${rows.map(r => `<tr>
                 <td>${prettyItem(r.name)}</td>
                 <td>${r.plots}</td>
@@ -2916,11 +2916,11 @@ function facilityPlanTableOf(groups) {
             <table class="facility-plan-table">
                 <thead>
                     <tr>
-                        <th>Facility</th>
-                        <th>Count</th>
-                        <th>Producing</th>
+                        <th>Instalación</th>
+                        <th>Cantidad</th>
+                        <th>Produciendo</th>
                         <th>Aniimo</th>
-                        <th>Why</th>
+                        <th>Motivo</th>
                     </tr>
                 </thead>
                 <tbody>${body}</tbody>
@@ -3044,7 +3044,7 @@ function renderAniimoSummary(plan) {
     const collapsedSummary = document.getElementById('aniimo-collapsed-summary');
     if (groups.size === 0) {
         container.innerHTML = '<p class="hint">Nothing in this plan needs an Aniimo.</p>';
-        collapsedSummary.textContent = 'No Aniimo needed.';
+        collapsedSummary.textContent = translate('No se necesitan Aniimos.');
         const count = document.getElementById('aniimo-count');
         if (count) count.hidden = true;
         document.getElementById('aniimo-abilities').innerHTML = '';
@@ -3098,10 +3098,10 @@ function renderAniimoSummary(plan) {
         .map(g => {
             total += g.count;
             const where = whereText(g);
-            return `<tr><td data-label="Aniimo">${abilityTag(g.ability)} ${aniimoNeeds(g)}</td><td data-label="How many">${g.count}</td><td data-label="Busy on average">${g.busy.toFixed(1)}</td><td data-label="Where">${where}</td></tr>`;
+            return `<tr><td data-label="Aniimo">${abilityTag(g.ability)} ${aniimoNeeds(g)}</td><td data-label="Cuántos">${g.count}</td><td data-label="Ocupados en promedio">${g.busy.toFixed(1)}</td><td data-label="Dónde">${where}</td></tr>`;
         })
         .join('');
-    const haulingRow = `<tr><td data-label="Aniimo">${abilityTag('Hauling')} any level</td><td data-label="How many">1+</td><td data-label="Busy on average">?</td><td data-label="Where">Carries produce to storage. How much work this is isn't known yet; add more if produce piles up.</td></tr>`;
+    const haulingRow = `<tr><td data-label="Aniimo">${abilityTag('Hauling')} any level</td><td data-label="Cuántos">1+</td><td data-label="Ocupados en promedio">?</td><td data-label="Dónde">Carries produce to storage. How much work this is isn't known yet; add more if produce piles up.</td></tr>`;
 
     // The count above says how many; this is only said when it's more than the homeland holds.
     const cap = homelandHolds;
@@ -3642,7 +3642,7 @@ function updateRateDisplay(pickUnit = false) {
         const label = CURRENCY_LABELS[lastPlan.currency] || lastPlan.currency;
         const points = lastPlan.season_points > 1e-12 ? ` + ${formatRate(lastPlan.season_points * multiplier)} ${SEASON.points}` : '';
         document.getElementById('plan-rate').textContent = `${formatRate(lastPlan.rate_per_second * multiplier)} ${label}${points}${suffix}`;
-        document.getElementById('rate-label').textContent = 'Your Rate';
+        document.getElementById('rate-label').textContent = translate('Tu tasa');
         rateLine.style.display = '';
         table.innerHTML = '';
         return;
@@ -3668,7 +3668,7 @@ function updateRateDisplay(pickUnit = false) {
             <tbody>${body}</tbody>
         </table>`;
     document.getElementById('priority-rate-head').appendChild(select);
-    document.getElementById('rate-label').textContent = 'Your Rates';
+    document.getElementById('rate-label').textContent = translate('Tus tasas');
     rateLine.style.display = 'none';
 }
 
@@ -3753,17 +3753,17 @@ function displayPlan(plan) {
         explored.textContent = '';
     } else if (plan.proven_optimal === false && plan.upper_bound > 0) {
         const gap = Math.max(0, (plan.upper_bound - plan.rate_per_second) / plan.upper_bound * 100);
-        explored.textContent = `Best plan found in the time allowed; the best possible is at most ${gap.toFixed(1)}% higher.`;
+        explored.textContent = `Mejor plan encontrado en el tiempo permitido; el óptimo teórico es a lo sumo un ${gap.toFixed(1)}% superior.`;
     } else {
         const reason = plan.fallback_reason ? ` (${plan.fallback_reason})` : '';
-        explored.textContent = `The exact planner couldn't run${reason}, so this plan comes from the backup planner and may not be the very best. Reloading the page usually fixes this.`;
+        explored.textContent = `El planificador exacto no pudo ejecutarse${reason}, por lo que este plan proviene del planificador de respaldo y puede no ser el óptimo. Recargar la página suele solucionar esto.`;
     }
 
     const unverifiedEl = document.getElementById('plan-unverified');
     const unverified = plan.unverified || [];
     unverifiedRowKeys = new Set(unverified.map(u => `${u.facility}|${u.item_name}`));
     if (unverified.length) {
-        unverifiedEl.textContent = `${unverified.length} recipe${unverified.length === 1 ? '' : 's'} in this plan ${unverified.length === 1 ? "hasn't" : "haven't"} been checked in game yet (tagged below). If any of those numbers are off, so is this plan.`;
+        unverifiedEl.textContent = `${unverified.length} ${unverified.length === 1 ? 'receta' : 'recetas'} en este plan aún no ${unverified.length === 1 ? 'ha sido verificada' : 'han sido verificadas'} en el juego (marcadas abajo). Si alguno de esos números no coincide, este plan tampoco.`;
         unverifiedEl.style.display = 'block';
     } else {
         unverifiedEl.style.display = 'none';
@@ -3772,7 +3772,7 @@ function displayPlan(plan) {
     const skippedEl = document.getElementById('plan-skipped');
     const skipped = planContext?.skipped || [];
     skippedEl.style.display = skipped.length ? 'block' : 'none';
-    skippedEl.textContent = skipped.length ? `Skipping ${skipped.map(prettyItem).join(', ')}.` : '';
+    skippedEl.textContent = skipped.length ? `Omitiendo ${skipped.map(prettyItem).join(', ')}.` : '';
 
     renderSeedTable(plan);
     renderLevelUp(plan);
@@ -3924,9 +3924,9 @@ async function runTimeToGoal() {
     const rows = priorityRows(lastPlan);
     const chosen = rows.find(r => r.target === document.getElementById('goal-target').value) || rows[0];
     const name = goalName(chosen);
-    document.getElementById('target-amount-label').textContent = `Target ${name}`;
-    document.getElementById('current-amount-label').textContent = `Current ${name}`;
-    document.getElementById('amount-produced-label').textContent = `${name} produced`;
+    document.getElementById('target-amount-label').textContent = `${translate('Objetivo')}: ${name}`;
+    document.getElementById('current-amount-label').textContent = `${translate('Actual')}: ${name}`;
+    document.getElementById('amount-produced-label').textContent = `${name} ${translate('producido')}`;
 
     const target = floatOrDefault(document.getElementById('target-amount').value, 0);
     const current = floatOrDefault(document.getElementById('current-amount').value, 0);
@@ -3949,7 +3949,7 @@ async function runTimeToGoal() {
     const seconds = needed <= 0 ? 0 : chosen.perSecond <= 1e-12 ? null : timeToMake(chosen, needed);
     if (seconds === null) {
         lastGoalResult = null;
-        document.getElementById('total-time').textContent = chosen.missing || 'Not made by this plan';
+        document.getElementById('total-time').textContent = chosen.missing || translate('No producido por este plan');
         document.getElementById('amount-produced').textContent = '-';
         document.getElementById('product-breakdown-section').style.display = 'none';
         document.getElementById('seeds-needed-section').style.display = 'none';
@@ -4160,7 +4160,7 @@ window.showFacilities = async function() {
     document.getElementById('facilitiesModal').classList.add('show');
     if (recipesRendered) return;
     if (!wasmReady) {
-        document.getElementById('facilities-loading-hint').textContent = 'Optimizer not ready. Please wait...';
+        document.getElementById('facilities-loading-hint').textContent = translate('Optimizador no listo. Por favor espera...');
         return;
     }
     try {
@@ -4171,7 +4171,7 @@ window.showFacilities = async function() {
         document.getElementById('facilities-loading-hint').style.display = 'none';
     } catch (error) {
         console.error('Failed to load recipe data:', error);
-        document.getElementById('facilities-loading-hint').textContent = 'Failed to load recipe data. Please refresh the page.';
+        document.getElementById('facilities-loading-hint').textContent = translate('Error al cargar datos de recetas. Por favor recarga la página.');
     }
 }
 
@@ -4191,7 +4191,7 @@ async function initApp() {
     try {
         sharedData = await readShareHash(window.location.hash);
     } catch (error) {
-        document.getElementById('share-config-status').textContent = 'This share link is invalid. Your saved setup was kept.';
+        document.getElementById('share-config-status').textContent = translate('Este enlace no es válido. Se mantuvo tu configuración guardada.');
         console.warn('Could not load shared config:', error);
     }
     const savedData = sharedData ? migrateSavedConfig(sharedData) : readStorage();

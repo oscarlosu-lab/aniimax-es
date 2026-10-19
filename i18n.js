@@ -1,12 +1,12 @@
 // Register a language here and add its JSON catalog; English phrases are the source keys.
-const languages = { en: 'English', ru: 'Русский', 'zh-TW': '繁體中文' };
+const languages = { en: 'English', es: 'Español', ru: 'Русский', 'zh-TW': '繁體中文' };
 const catalogs = { en: {} };
 const templates = {};
 let language = 'en';
 let translateZhTw;
-let preferredLanguage = 'en';
-try { preferredLanguage = localStorage.getItem('aniimax-language') || 'en'; } catch (_) { /* Private browsing can disable storage. */ }
-if (!Object.hasOwn(languages, preferredLanguage)) preferredLanguage = 'en';
+let preferredLanguage = 'es';
+try { preferredLanguage = localStorage.getItem('aniimax-language') || 'es'; } catch (_) { /* Private browsing can disable storage. */ }
+if (!Object.hasOwn(languages, preferredLanguage)) preferredLanguage = 'es';
 
 async function load(code) {
     if (!catalogs[code]) {
@@ -36,6 +36,7 @@ export function translate(value) {
     if (language === 'en' || !value) return value;
     if (language === 'zh-TW') return (translateZhTw ??= createZhTwTranslator(catalogs['zh-TW']))(value);
     const phrases = catalogs[language];
+    if (!phrases) return value;
     const trimmed = value.trim();
     const translated = phrases[trimmed];
     if (translated) return value.replace(trimmed, translated);
@@ -165,6 +166,7 @@ function zhTwLiteralLength(source) {
 
 export function currentLocale() {
     if (language === 'zh-TW') return 'zh-TW';
+    if (language === 'es') return 'es-ES';
     return language === 'ru' ? 'ru-RU' : 'en-US';
 }
 
