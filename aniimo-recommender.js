@@ -27,17 +27,31 @@ const ELEMENT_COLORS = {
     'Hierba': '#4ade80',
     'Agua': '#60a5fa',
     'Tierra': '#ca8a04',
-    'Roca': '#ca8a04',
     'Relámpago': '#facc15',
-    'Eléctrico': '#facc15',
     'Hielo': '#38bdf8',
     'Viento': '#2dd4bf',
     'Oscuro': '#c084fc',
-    'Oscuridad': '#c084fc',
     'Luz': '#fef08a',
-    'Sagrado': '#fef08a',
     'Neutro': '#94a3b8'
 };
+
+const ABILITY_ES_NAME = {
+    'Fire': 'Fuego', 'Fuego': 'Fuego',
+    'Grass': 'Hierba', 'Hierba': 'Hierba',
+    'Water': 'Agua', 'Agua': 'Agua',
+    'Earth': 'Tierra', 'Tierra': 'Tierra',
+    'Lightning': 'Relámpago', 'Relámpago': 'Relámpago',
+    'Ice': 'Hielo', 'Hielo': 'Hielo',
+    'Wind': 'Viento', 'Viento': 'Viento',
+    'Dark': 'Oscuro', 'Oscuro': 'Oscuro',
+    'Light': 'Luz', 'Luz': 'Luz',
+    'Hauling': 'Remolque', 'Remolque': 'Remolque',
+    'Artisanship': 'Artesanía', 'Artesanía': 'Artesanía',
+    'Leisure': 'Ocio', 'Ocio': 'Ocio',
+    'Perfumery': 'Perfumería', 'Perfumería': 'Perfumería'
+};
+
+const DISPLAY_ABILITIES = ['Fuego', 'Hierba', 'Agua', 'Tierra', 'Relámpago', 'Hielo', 'Viento', 'Oscuro', 'Luz', 'Remolque', 'Artesanía', 'Ocio', 'Perfumería'];
 
 /**
  * Calcula la recomendación de Aniimos óptimos para el plan actual
@@ -53,45 +67,66 @@ export async function recommendAniimos(keptGroups, maxSlots = 26, allowPrismana 
 
     const availablePool = db.filter(c => allowPrismana ? true : !c.is_prismana);
 
-    // Mapeo de necesidades
-    const recommendations = [];
+    const rawRecommendations = [];
     let totalAssigned = 0;
 
     for (const group of keptGroups) {
-        const ability = group.ability;
+        const rawAbility = group.ability;
+        const canonicalAbility = ABILITY_ES_NAME[rawAbility] || rawAbility;
         const requiredLevel = group.level || 1;
         const count = group.count || 1;
-        const whereDesc = [...group.where.entries()]
-            .map(([place, n]) => n > 1 ? `${place} ×${n}` : place)
-            .join(', ') || (group.jobs.size ? [...group.jobs.keys()].join(', ') : 'Labores generales');
-
-        // Buscar el mejor Aniimo que cumpla con la habilidad y el nivel
-        const candidates = availablePool.filter(c => (c.abilities[ability] || 0) >= requiredLevel);
-
-        // Si no hay candidatos exactos para el nivel (ej. nivel 4 en pool sin prismana), tomar el mayor nivel disponible
-        const sorted = candidates.length ? candidates : availablePool.filter(c => (c.abilities[ability] || 0) > 0);
         
+        let whereDesc = '';
+        if (group.where && group.where.size) {
+            whereDesc = [...group.where.entries()]
+                .map(([place, n]) => n > 1 ? `${place} ×${n}` : place)
+                .join(', ');
+        } else if (group.jobs && group.jobs.size) {
+            const trJobs = {
+                'Sowing': 'Siembra',
+                'Collecting': 'Recolección',
+                'Reaping': 'Cosecha',
+                'Logging': 'Tala',
+                'Reclaiming': 'Preparación'
+            };
+            whereDesc = [...group.jobs.keys()].map(j => trJobs[j] || j).join(' y ') + ' de cultivos';
+        } else {
+            whereDesc = 'Labores generales del Hogar';
+        }
+
+        // Buscar en el pool criaturas que cumplan con la habilidad requerida
+        const candidates = availablePool.filter(c => {
+            const lvl = c.abilities[canonicalAbility] || c.abilities[rawAbility] || 0;
+            return lvl >= requiredLevel;
+        });
+
+        // Si no hay candidatos para ese nivel exacto, buscar las de mayor nivel disponible
+        const sorted = candidates.length ? candidates : availablePool.filter(c => {
+            return (c.abilities[canonicalAbility] || c.abilities[rawAbility] || 0) > 0;
+        });
+
         sorted.sort((a, b) => {
-            const lvlA = a.abilities[ability] || 0;
-            const lvlB = b.abilities[ability] || 0;
+            const lvlA = a.abilities[canonicalAbility] || a.abilities[rawAbility] || 0;
+            const lvlB = b.abilities[canonicalAbility] || b.abilities[rawAbility] || 0;
             if (lvlB !== lvlA) return lvlB - lvlA;
-            // Preferir que tenga Transporte / Remolque adicional
-            const haulA = a.abilities['Remolque'] || 0;
-            const haulB = b.abilities['Remolque'] || 0;
+            // Desempate 1: mayor nivel de Remolque / Transporte secundario
+            const haulA = a.abilities['Remolque'] || a.abilities['Hauling'] || 0;
+            const haulB = b.abilities['Remolque'] || b.abilities['Hauling'] || 0;
             if (haulB !== haulA) return haulB - haulA;
-            // Preferir mayor cantidad de habilidades útiles
+            // Desempate 2: más habilidades generales para polivalencia
             return Object.keys(b.abilities).length - Object.keys(a.abilities).length;
         });
 
         const bestMatch = sorted[0];
 
         if (bestMatch) {
-            recommendations.push({
+            const provLvl = bestMatch.abilities[canonicalAbility] || bestMatch.abilities[rawAbility] || requiredLevel;
+            rawRecommendations.push({
                 creature: bestMatch,
                 count: count,
-                ability: ability,
+                ability: canonicalAbility,
                 requiredLevel: requiredLevel,
-                providedLevel: bestMatch.abilities[ability] || requiredLevel,
+                providedLevel: provLvl,
                 where: whereDesc,
                 personalityBonus: group.bonus,
                 haulingBonus: bestMatch.abilities['Remolque'] || 0
@@ -100,33 +135,63 @@ export async function recommendAniimos(keptGroups, maxSlots = 26, allowPrismana 
         }
     }
 
-    // Asegurar 1 transportista si no hay ninguno cubierto
-    const hasHauler = recommendations.some(r => r.creature.abilities['Remolque'] >= 1);
-    if (!hasHauler) {
+    // Asegurar siempre 1+ transportista dedicado para la fila de Remolque
+    const hasDedicatedHauler = rawRecommendations.some(r => r.ability === 'Remolque');
+    if (!hasDedicatedHauler) {
         const bestHaulers = availablePool
-            .filter(c => (c.abilities['Remolque'] || 0) >= 1)
-            .sort((a, b) => (b.abilities['Remolque'] || 0) - (a.abilities['Remolque'] || 0));
+            .filter(c => (c.abilities['Remolque'] || c.abilities['Hauling'] || 0) >= 1)
+            .sort((a, b) => (b.abilities['Remolque'] || b.abilities['Hauling'] || 0) - (a.abilities['Remolque'] || a.abilities['Hauling'] || 0));
+        
         if (bestHaulers[0]) {
-            recommendations.push({
-                creature: bestHaulers[0],
+            const h = bestHaulers[0];
+            const hLvl = h.abilities['Remolque'] || h.abilities['Hauling'] || 1;
+            rawRecommendations.push({
+                creature: h,
                 count: 1,
                 ability: 'Remolque',
                 requiredLevel: 1,
-                providedLevel: bestHaulers[0].abilities['Remolque'],
+                providedLevel: hLvl,
                 where: 'Transporte continuo al Almacén',
                 personalityBonus: false,
-                haulingBonus: bestHaulers[0].abilities['Remolque']
+                haulingBonus: hLvl
             });
             totalAssigned += 1;
         }
     }
 
-    const freeSlots = Math.max(0, (maxSlots || 26) - totalAssigned);
+    // Agrupar inteligentemente por criatura para presentar una lista limpia y profesional
+    const groupedMap = new Map();
+    for (const r of rawRecommendations) {
+        const key = r.creature.id || r.creature.name;
+        if (!groupedMap.has(key)) {
+            groupedMap.set(key, {
+                creature: r.creature,
+                totalCount: 0,
+                roles: [],
+                primaryAbility: r.ability,
+                providedLevel: r.providedLevel
+            });
+        }
+        const item = groupedMap.get(key);
+        item.totalCount += r.count;
+        item.roles.push({
+            count: r.count,
+            ability: r.ability,
+            level: r.providedLevel,
+            where: r.where,
+            bonus: r.personalityBonus
+        });
+    }
+
+    const consolidatedRecommendations = [...groupedMap.values()];
+
+    const effectiveMax = maxSlots || 26;
+    const freeSlots = Math.max(0, effectiveMax - totalAssigned);
 
     return {
-        recommendations,
+        recommendations: consolidatedRecommendations,
         totalAssigned,
-        maxSlots: maxSlots || 26,
+        maxSlots: effectiveMax,
         freeSlots
     };
 }
@@ -149,16 +214,25 @@ export function renderRecommenderUI(recommendationData, containerEl, onTogglePri
 
     const cardsHtml = recommendations.map(rec => {
         const c = rec.creature;
-        const iconSrc = c.local_icon || c.icon_url || '';
-        const fallbackSrc = c.icon_url || '';
-        const elementBadges = (c.elements || []).map(elem => {
-            const color = ELEMENT_COLORS[elem] || '#94a3b8';
-            return `<span class="recommender-elem-badge" style="background:${color}22; color:${color}; border:1px solid ${color}66">${elem}</span>`;
-        }).join('');
+        const iconSrc = c.icon || `assets/aniimo/${c.id}.webp`;
+        const fallbackSrc = `https://raw.githubusercontent.com/oscarlosu-lab/aniimax-es/main/web/assets/aniimo/${c.id}.webp`;
+        
+        const elementColor = ELEMENT_COLORS[c.element] || '#94a3b8';
+        const elementBadge = `<span class="recommender-elem-badge" style="background:${elementColor}22; color:${elementColor}; border:1px solid ${elementColor}66">${c.element}</span>`;
 
-        const abilitiesBadges = Object.entries(c.abilities).map(([ab, lvl]) => {
-            const isTarget = ab === rec.ability;
-            return `<span class="recommender-skill-pill${isTarget ? ' active-target' : ''}">${ab} Lv.${lvl}</span>`;
+        // Mostrar únicamente las aptitudes en español sin duplicados
+        const abilitiesBadges = DISPLAY_ABILITIES
+            .filter(ab => (c.abilities[ab] || 0) > 0)
+            .map(ab => {
+                const lvl = c.abilities[ab];
+                const isPrimary = ab === rec.primaryAbility || rec.roles.some(r => r.ability === ab);
+                return `<span class="recommender-skill-pill${isPrimary ? ' active-target' : ''}">${ab} Lv.${lvl}</span>`;
+            }).join('');
+
+        // Tareas desglosadas con claridad
+        const tasksHtml = rec.roles.map(role => {
+            const countStr = role.count > 1 ? `<strong>×${role.count}</strong> en ` : '';
+            return `<div class="recommender-subtask">• ${countStr}<span>${role.where}</span> <small class="hint">(${role.ability} Lv.${role.level})</small></div>`;
         }).join('');
 
         const habitatText = c.habitat ? `📍 <strong>Hábitat:</strong> ${c.habitat}` : '';
@@ -168,17 +242,20 @@ export function renderRecommenderUI(recommendationData, containerEl, onTogglePri
                 <div class="recommender-card-left">
                     <div class="recommender-avatar-wrap">
                         <img class="recommender-avatar" src="${iconSrc}" onerror="this.onerror=null;this.src='${fallbackSrc}';" alt="${c.name}" loading="lazy" />
-                        <span class="recommender-count-badge">×${rec.count}</span>
+                        <span class="recommender-count-badge">×${rec.totalCount}</span>
                     </div>
                 </div>
                 <div class="recommender-card-info">
                     <div class="recommender-header-line">
                         <span class="recommender-dex">${c.dex}</span>
                         <strong class="recommender-name">${c.name}</strong>
-                        ${elementBadges}
+                        ${elementBadge}
                     </div>
                     <div class="recommender-task-line">
-                        🎯 <strong>Labor asignada:</strong> <span class="recommender-task-dest">${rec.where}</span>
+                        🎯 <strong>Labor asignada:</strong>
+                        <div class="recommender-tasks-container">
+                            ${tasksHtml}
+                        </div>
                     </div>
                     <div class="recommender-skills-list">
                         ${abilitiesBadges}
@@ -189,7 +266,11 @@ export function renderRecommenderUI(recommendationData, containerEl, onTogglePri
         `;
     }).join('');
 
-    const slotsClass = totalAssigned > maxSlots ? 'over-capacity' : 'optimal-capacity';
+    const isOver = totalAssigned > maxSlots;
+    const slotsClass = isOver ? 'over-capacity' : 'optimal-capacity';
+    const statusNote = isOver
+        ? `⚠️ Supera por ${totalAssigned - maxSlots} el cupo de Casa rodante (máx. ${maxSlots})`
+        : `✔ Capacidad óptima (${freeSlots} slots libres para transporte o reservas)`;
 
     containerEl.innerHTML = `
         <div class="recommender-container">
@@ -204,12 +285,16 @@ export function renderRecommenderUI(recommendationData, containerEl, onTogglePri
                 </div>
             </div>
 
+            <div class="recommender-status-bar ${slotsClass}">
+                ${statusNote}
+            </div>
+
             <div class="recommender-toolbar">
                 <label class="recommender-toggle-label">
                     <input type="checkbox" id="recommender-prismana-toggle" ${allowPrismana ? 'checked' : ''}>
                     <span>Incluir Formas de Prismana (máxima eficiencia Lv.4)</span>
                 </label>
-                <button type="button" class="button small" id="recommender-copy-btn">📋 Copiar lista</button>
+                <button type="button" class="button small" id="recommender-copy-btn">📋 Copiar lista completa</button>
             </div>
 
             <div class="recommender-grid">
@@ -218,7 +303,7 @@ export function renderRecommenderUI(recommendationData, containerEl, onTogglePri
         </div>
     `;
 
-    // Eventos
+    // Eventos interactivos
     const toggle = containerEl.querySelector('#recommender-prismana-toggle');
     if (toggle && onTogglePrismana) {
         toggle.addEventListener('change', (e) => {
@@ -229,11 +314,16 @@ export function renderRecommenderUI(recommendationData, containerEl, onTogglePri
     const copyBtn = containerEl.querySelector('#recommender-copy-btn');
     if (copyBtn) {
         copyBtn.addEventListener('click', () => {
-            const summary = recommendations.map(r => `• ${r.creature.name} (${r.creature.dex}) ×${r.count} -> ${r.where} [${r.ability} Lv.${r.providedLevel}]`).join('\n');
-            const textToCopy = `Equipo Aniimo Recomendado (${totalAssigned}/${maxSlots} slots):\n${summary}`;
+            const lines = [];
+            lines.push(`📋 EQUIPO RECOMENDADO DE ANIIMO (${totalAssigned}/${maxSlots} slots):`);
+            recommendations.forEach(r => {
+                const tasks = r.roles.map(rl => `${rl.where} (${rl.ability} Lv.${rl.level})`).join(', ');
+                lines.push(`• ${r.creature.name} (${r.creature.dex}) ×${r.totalCount} -> ${tasks}`);
+            });
+            const textToCopy = lines.join('\n');
             navigator.clipboard.writeText(textToCopy).then(() => {
-                copyBtn.textContent = '✓ ¡Copiado!';
-                setTimeout(() => { copyBtn.textContent = '📋 Copiar lista'; }, 2000);
+                copyBtn.textContent = '✓ ¡Lista copiada!';
+                setTimeout(() => { copyBtn.textContent = '📋 Copiar lista completa'; }, 2000);
             });
         });
     }

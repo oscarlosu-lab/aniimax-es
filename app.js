@@ -2668,8 +2668,9 @@ function getPlanInputValues() {
 // "quick_aromathyst" -> "Quick Aromathyst": the data uses snake_case names.
 function prettyItem(name) {
     if (!name) return name;
-    if (ITEM_NAMES[name]) return ITEM_NAMES[name];
-    return name.split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
+    if (ITEM_NAMES[name]) return translate(ITEM_NAMES[name]);
+    const formatted = name.split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
+    return translate(formatted);
 }
 
 // A plan row's reason with its item names made readable: "Usado para dried_strawberries, jam; the
@@ -2679,7 +2680,8 @@ function prettyReason(reason) {
     const names = list => list.split(', ').map(prettyItem).join(', ');
     return reason
         .replace(/^Usado para ([^;]+)/, (_, list) => 'Usado para ' + names(list))
-        .replace(/takes turns with ([^;]+)$/, (_, list) => 'takes turns with ' + names(list));
+        .replace(/^Used for ([^;]+)/, (_, list) => 'Usado para ' + names(list))
+        .replace(/takes turns with ([^;]+)$/, (_, list) => 'se alterna con ' + names(list));
 }
 
 // Keys ("Facility|item") of the shown plan's rows that rely on recipes not yet checked in game;
@@ -2862,8 +2864,9 @@ const ENVIRONMENT_BUILDING_ABILITY = {
 // A colored ability tag, like the game's.
 function abilityTag(name) {
     const a = ABILITY_BY_NAME.get(name);
-    if (!a) return name;
-    return `<span class="ability${a.dark ? ' dark' : ''}" style="--ability:${a.color}" title="${a.about}">${name}</span>`;
+    const label = translate(name);
+    if (!a) return label;
+    return `<span class="ability${a.dark ? ' dark' : ''}" style="--ability:${a.color}" title="${translate(a.about)}">${label}</span>`;
 }
 
 // A colored circle with the Aniimo level in it, for the facility plan's Aniimo column; the
@@ -2871,7 +2874,8 @@ function abilityTag(name) {
 function abilityDot(name, level, note) {
     const a = ABILITY_BY_NAME.get(name);
     const color = a ? a.color : '#888888';
-    const tip = `${name} Lv.${level}${note ? ` · ${note}` : ''}`;
+    const label = translate(name);
+    const tip = `${label} Lv.${level}${note ? ` · ${note}` : ''}`;
     return `<span class="ability-dot${a && a.dark ? ' dark' : ''}${note ? ' bonus' : ''}" style="--ability:${color}" title="${tip}" aria-label="${tip}">${level}</span>`;
 }
 
@@ -2935,11 +2939,11 @@ function facilityPlanTableOf(groups) {
 function planRows(rows) {
     return rows.map(step => `
                     <tr class="status-${step.status}">
-                        <td data-label="Facility">${step.facility}</td>
-                        <td data-label="Count">${step.facility_count}</td>
-                        <td data-label="Producing">${step.item_name ? prettyItem(step.item_name) : '-'}${unverifiedRowKeys.has(`${step.facility}|${step.item_name}`) ? '<span class="tag unverified" title="Not yet checked in game">unverified</span>' : ''}${step.item_name && step.status === 'producing' ? `<button type="button" class="skip-row" data-skip="${step.item_name}" title="Can't make this? Skip it and plan again" aria-label="Skip ${prettyItem(step.item_name)} and plan again">✕</button>` : ''}</td>
+                        <td data-label="Instalación">${translate(step.facility)}</td>
+                        <td data-label="Cantidad">${step.facility_count}</td>
+                        <td data-label="Produciendo">${step.item_name ? prettyItem(step.item_name) : '-'}${unverifiedRowKeys.has(`${step.facility}|${step.item_name}`) ? '<span class="tag unverified" title="No verificado aún en el juego">no verificado</span>' : ''}${step.item_name && step.status === 'producing' ? `<button type="button" class="skip-row" data-skip="${step.item_name}" title="¿No puedes fabricar esto? Omitir y planificar de nuevo" aria-label="Omitir ${prettyItem(step.item_name)} y planificar de nuevo">✕</button>` : ''}</td>
                         <td data-label="Aniimo">${aniimoLabel(step)}</td>
-                        <td data-label="Why">${prettyReason(step.reason)}</td>
+                        <td data-label="Motivo">${prettyReason(step.reason)}</td>
                     </tr>
                 `).join('');
 }
@@ -2961,20 +2965,34 @@ function modeTag(mode) {
 // What a row's Aniimo work on: each growing job ("Sowing crops" when it covers both Farmland and
 // Woodland, "Reaping farmland" when it's one facility's), then the facilities.
 function whereText(g) {
-    return [...g.jobs]
-        .map(([job, at]) => `${job} ${at.size > 1 ? 'crops' : listOf([...at].map(facility => facility.toLowerCase()))}`)
-        .concat([...g.where.entries()].map(([place, n]) => `${n > 1 ? n + '× ' : ''}${place}`))
-        .join(', ');
+    const jobNames = {
+        'Sowing': 'Siembra de',
+        'Reaping': 'Cosecha de',
+        'Collecting': 'Recolección en',
+        'Logging': 'Tala en',
+        'Reclaiming': 'Preparación de'
+    };
+    const jobs = [...g.jobs].map(([job, at]) => {
+        const trJob = jobNames[job] || translate(job) || job;
+        if (at.size > 1) return `${trJob} cultivos`;
+        const facs = [...at].map(f => {
+            const tr = translate(f);
+            return tr.toLowerCase();
+        }).join(' y ');
+        return `${trJob} ${facs}`;
+    });
+    const places = [...g.where.entries()].map(([place, n]) => `${n > 1 ? n + '× ' : ''}${place}`);
+    return jobs.concat(places).join(', ');
 }
 
 // What one Aniimo of a team row has to be: its level, then every personality it carries, each
 // with the letter the game shows. "Lv.4 · Judicious (J), Faithful (F)" is one Aniimo working a
 // Nimbus Bed and a Starfall Hammock, which it can because those never want opposites.
 function aniimoNeeds(g) {
-    if (g.environment) return g.label.slice(g.ability.length).trim();
+    if (g.environment) return 'cualquier nivel';
     const personalities = [...g.personalities]
         .sort()
-        .map(name => `${name} (${personalityLetter(name)})`)
+        .map(name => `${translate(name)} (${personalityLetter(name)})`)
         .join(', ');
     return `Lv.${g.level}${personalities ? ` · ${personalities}` : ''}`;
 }
@@ -3010,7 +3028,7 @@ function renderAniimoSummary(plan) {
                 });
                 return;
             }
-            const place = `${step.facility} (${prettyItem(step.item_name)})`;
+            const place = `${translate(step.facility)} (${prettyItem(step.item_name)})`;
             g.where.set(place, (g.where.get(place) || 0) + step.facility_count);
         });
     });
@@ -3021,7 +3039,7 @@ function renderAniimoSummary(plan) {
         if (!ability || !units) return;
         const key = `${ability} (environment)`;
         if (!groups.has(key)) {
-            groups.set(key, { label: `${ability} any level`, ability, level: 1, bonus: false, busy: 0, where: new Map(), jobs: new Map(), environment: true });
+            groups.set(key, { label: `${translate(ability)} cualquier nivel`, ability, level: 1, bonus: false, busy: 0, where: new Map(), jobs: new Map(), environment: true });
         }
         const g = groups.get(key);
         g.busy += units;
@@ -3037,16 +3055,16 @@ function renderAniimoSummary(plan) {
             pairUnits.set(key, { units: Math.max(seen ? seen.units : 0, a.units), modes: a.pair_modes || [a.mode, a.mode] });
             return;
         }
-        needsAniimo(a.building, a.units, `${a.building} (${a.mode})`);
+        needsAniimo(a.building, a.units, `${translate(a.building)} (${translate(a.mode)})`);
     });
     pairUnits.forEach(({ units, modes }, key) => {
         const [building, partner] = key.split('|');
-        needsAniimo(building, units, `${building} (${modes[0]})`);
-        needsAniimo(partner, units, `${partner} (${modes[1]})`);
+        needsAniimo(building, units, `${translate(building)} (${translate(modes[0])})`);
+        needsAniimo(partner, units, `${translate(partner)} (${translate(modes[1])})`);
     });
     const collapsedSummary = document.getElementById('aniimo-collapsed-summary');
     if (groups.size === 0) {
-        container.innerHTML = '<p class="hint">Nothing in this plan needs an Aniimo.</p>';
+        container.innerHTML = '<p class="hint">Nada en este plan requiere Aniimos.</p>';
         collapsedSummary.textContent = translate('No se necesitan Aniimos.');
         const count = document.getElementById('aniimo-count');
         if (count) count.hidden = true;
@@ -3111,7 +3129,7 @@ function renderAniimoSummary(plan) {
     // The count above says how many; this is only said when it's more than the homeland holds.
     const cap = homelandHolds;
     const capNote = cap && total > cap
-        ? `<p class="hint small">That's ${total} Aniimo, more than the ${cap} an RV level ${selectedHomeLevel()} homeland holds.</p>`
+        ? `<p class="hint small">Son ${total} Aniimos, más de los ${cap} que admite un Hogar de nivel ${selectedHomeLevel()}.</p>`
         : '';
     const have = document.getElementById('aniimo-count-have');
     const of = document.getElementById('aniimo-count-of');
@@ -3123,8 +3141,8 @@ function renderAniimoSummary(plan) {
         count.hidden = false;
         count.classList.toggle('over', !!cap && total > cap);
         count.title = cap
-            ? `${total} Aniimo for this plan; an RV level ${selectedHomeLevel()} homeland holds ${cap}`
-            : `${total} Aniimo for this plan`;
+            ? `${total} Aniimos para este plan; un Hogar de nivel ${selectedHomeLevel()} admite ${cap}`
+            : `${total} Aniimos para este plan`;
     }
     collapsedSummary.textContent = '';
     // How many of each ability the plan needs, in the game's order, like its Abilities screen.
@@ -3139,7 +3157,7 @@ function renderAniimoSummary(plan) {
     };
     const teamDots = g => {
         const where = whereText(g);
-        const tip = `${g.count > 1 ? `${g.count}× ` : ''}${g.label}${g.bonus ? ' (+20% speed)' : ''} · ${where}`;
+        const tip = `${g.count > 1 ? `${g.count}× ` : ''}${g.label}${g.bonus ? ' (+20% velocidad)' : ''} · ${where}`;
         const times = g.count > 1 ? `<span class="ability-times">×${g.count}</span>` : '';
         return `<span class="ability-kind">${dot(g.ability, g.environment ? '·' : g.level, g.bonus, tip)}${times}</span>`;
     };
@@ -3154,9 +3172,11 @@ function renderAniimoSummary(plan) {
             dots.push(`<span class="ability-kind">${dot('Hauling', '·', false, 'Remolque, cualquier nivel · transporta la producción al almacén; añade más si se acumula')}</span>`);
         }
         const stack = dots.length ? `<div class="ability-stack">${dots.join('')}</div>` : '';
+        const aName = translate(a.name);
+        const aAbout = translate(a.about);
         return `<div class="ability-col" style="--ability:${a.color}">
-            <div class="ability-cell${zero ? ' zero' : ''}" title="${a.name}: ${a.about}">
-                <span class="ability-count">${n}</span><span class="ability-name">${a.name}</span>
+            <div class="ability-cell${zero ? ' zero' : ''}" title="${aName}: ${aAbout}">
+                <span class="ability-count">${n}</span><span class="ability-name">${aName}</span>
             </div>${stack}</div>`;
     }).join('');
     container.innerHTML = `
