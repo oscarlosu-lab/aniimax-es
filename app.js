@@ -10,6 +10,9 @@ import {
 } from './facility-config.js?v=rv14-rv20-facility-counts';
 import { allocateTurnFacilities, redistributeTurnFacilityRows } from './turn-jobs.js';
 import { createShareUrl, readShareHash, urlWithoutShare } from './share-config.js';
+import { recommendAniimos, renderRecommenderUI } from './aniimo-recommender.js';
+
+let recommenderAllowPrismana = true;
 
 let wasmReady = false;
 
@@ -1922,7 +1925,7 @@ function renderRosterSummary(plan) {
         return `<tr><td data-label="Aniimo">${rosterLabel(aniimo, i)}<div class="hint small">${abilities} · ${letters}</div></td><td data-label="Cuántos">${aniimo.count}</td><td data-label="Ocupados en promedio">${busy[i].toFixed(1)}</td><td data-label="Dónde">${places || '<span class="hint small">idle</span>'}</td></tr>`;
     }).join('');
     document.getElementById('aniimo-summary').innerHTML = roster.length
-        ? `<table class="aniimo-table"><thead><tr><th>Aniimo</th><th>How many</th><th>Busy on average</th><th>Where</th></tr></thead><tbody>${rows}</tbody></table>
+        ? `<table class="aniimo-table"><thead><tr><th>Aniimo</th><th>Cantidad</th><th>Ocupación media</th><th>Ubicación</th></tr></thead><tbody>${rows}</tbody></table>
            <p class="hint small">${working} of your ${have} Aniimo have work in this plan.</p>`
         : '<p class="hint">Add the Aniimo you have under My Aniimo to plan with them.</p>';
     document.getElementById('aniimo-collapsed-summary').textContent = '';
@@ -2520,7 +2523,7 @@ function renderLevelUp(plan) {
         : '';
     lines.innerHTML = `
         <table class="level-up-lines">
-            <thead><tr><th>Cost</th><th>Need</th><th>Have</th><th id="level-up-rate-head"></th><th>Ready in</th></tr></thead>
+            <thead><tr><th>Coste</th><th>Necesario</th><th>Disponible</th><th id="level-up-rate-head"></th><th>Listo en</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
         ${coinsNote}`;
@@ -2562,9 +2565,9 @@ function renderSeedTable(plan) {
     ].filter(Boolean).join(' + ');
     card.style.display = 'block';
     const per = levelUp
-        ? `until RV ${planContext.target}`
-        : { second: 'per second', minute: 'per minute', hour: 'per hour', day: 'per day' }[unit] || 'per second';
-    document.getElementById('seed-card-unit').textContent = `Seeds ${per}: one per planting, for every Farmland and Woodland crop in the plan.`;
+        ? `hasta Casa rodante ${planContext.target}`
+        : { second: 'por segundo', minute: 'por minuto', hour: 'por hora', day: 'por día' }[unit] || 'por segundo';
+    document.getElementById('seed-card-unit').textContent = `Semillas ${per}: una por siembra, para cada cultivo de Campo de cultivo y Arboleda en el plan.`;
     el.innerHTML = `
         <table>
             <thead><tr><th>Cultivo</th><th>Parcelas</th><th>Semillas</th><th>Coste</th></tr></thead>
@@ -2572,7 +2575,7 @@ function renderSeedTable(plan) {
                 <td>${prettyItem(r.name)}</td>
                 <td>${r.plots}</td>
                 <td>${amount(r.seeds)}</td>
-                <td>${r.wheat > 0 ? `${amount(r.wheat)} ${SEASON.currency}` : r.cost > 0 ? `${amount(r.cost)} Home Coins` : 'free'}</td>
+                <td>${r.wheat > 0 ? `${amount(r.wheat)} ${SEASON.currency}` : r.cost > 0 ? `${amount(r.cost)} Monedas del Hogar` : 'Gratis'}</td>
             </tr>`).join('')}</tbody>
             ${rows.length > 1 && totals ? `<tfoot><tr><td colspan="3">Total</td><td>${totals}</td></tr></tfoot>` : ''}
         </table>`;
@@ -2603,7 +2606,7 @@ function renderProfitBreakdown(plan) {
     document.getElementById('profit-breakdown').innerHTML = `
         <div class="table-wrapper">
             <table class="facility-plan-table">
-                <thead><tr><th>Product</th><th>Facility</th><th>Sold per hour</th><th>Profit per hour</th><th>Share</th><th>Profit until RV ${planContext?.target}</th></tr></thead>
+                <thead><tr><th>Producto</th><th>Instalación</th><th>Vendido/hora</th><th>Beneficio/hora</th><th>Porcentaje</th><th>Beneficio hasta CR ${planContext?.target}</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         </div>`;
@@ -2669,13 +2672,13 @@ function prettyItem(name) {
     return name.split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
 }
 
-// A plan row's reason with its item names made readable: "Used for dried_strawberries, jam; the
-// rest sells directly" -> "Used for Dried Strawberries, Jam; the rest sells directly".
+// A plan row's reason with its item names made readable: "Usado para dried_strawberries, jam; the
+// rest sells directly" -> "Usado para Dried Strawberries, Jam; the rest sells directly".
 function prettyReason(reason) {
     if (!reason) return reason;
     const names = list => list.split(', ').map(prettyItem).join(', ');
     return reason
-        .replace(/^Used for ([^;]+)/, (_, list) => 'Used for ' + names(list))
+        .replace(/^Usado para ([^;]+)/, (_, list) => 'Usado para ' + names(list))
         .replace(/takes turns with ([^;]+)$/, (_, list) => 'takes turns with ' + names(list));
 }
 
@@ -3048,6 +3051,8 @@ function renderAniimoSummary(plan) {
         const count = document.getElementById('aniimo-count');
         if (count) count.hidden = true;
         document.getElementById('aniimo-abilities').innerHTML = '';
+        const recEl = document.getElementById('aniimo-recommender-container');
+        if (recEl) recEl.innerHTML = '';
         return;
     }
     // Each row gets its own Aniimo, which is the clearer team to keep. Only when that asks for
@@ -3101,7 +3106,7 @@ function renderAniimoSummary(plan) {
             return `<tr><td data-label="Aniimo">${abilityTag(g.ability)} ${aniimoNeeds(g)}</td><td data-label="Cuántos">${g.count}</td><td data-label="Ocupados en promedio">${g.busy.toFixed(1)}</td><td data-label="Dónde">${where}</td></tr>`;
         })
         .join('');
-    const haulingRow = `<tr><td data-label="Aniimo">${abilityTag('Hauling')} any level</td><td data-label="Cuántos">1+</td><td data-label="Ocupados en promedio">?</td><td data-label="Dónde">Carries produce to storage. How much work this is isn't known yet; add more if produce piles up.</td></tr>`;
+    const haulingRow = `<tr><td data-label="Aniimo">${abilityTag('Hauling')} cualquier nivel</td><td data-label="Cantidad">1+</td><td data-label="Ocupación media">?</td><td data-label="Ubicación">Transporta la producción al almacén. Si la producción se acumula, añade más transportistas.</td></tr>`;
 
     // The count above says how many; this is only said when it's more than the homeland holds.
     const cap = homelandHolds;
@@ -3146,7 +3151,7 @@ function renderAniimoSummary(plan) {
             .sort((x, y) => y.level - x.level || Number(y.bonus) - Number(x.bonus))
             .map(teamDots);
         if (a.name === 'Hauling') {
-            dots.push(`<span class="ability-kind">${dot('Hauling', '·', false, 'Hauling, any level · carries produce to storage; add more if produce piles up')}</span>`);
+            dots.push(`<span class="ability-kind">${dot('Hauling', '·', false, 'Remolque, cualquier nivel · transporta la producción al almacén; añade más si se acumula')}</span>`);
         }
         const stack = dots.length ? `<div class="ability-stack">${dots.join('')}</div>` : '';
         return `<div class="ability-col" style="--ability:${a.color}">
@@ -3157,12 +3162,32 @@ function renderAniimoSummary(plan) {
     container.innerHTML = `
         <div class="table-wrapper">
             <table class="facility-plan-table">
-                <thead><tr><th>Aniimo</th><th>How many</th><th>Busy on average</th><th>Where</th></tr></thead>
+                <thead><tr><th>Aniimo</th><th>Cantidad</th><th>Ocupación media</th><th>Ubicación</th></tr></thead>
                 <tbody>${rows}${haulingRow}</tbody>
             </table>
         </div>
         ${capNote}
     `;
+
+    // Recomendador de Aniimos según predicción del Datamine
+    const recommenderCard = document.getElementById('aniimo-recommender-card');
+    const recommenderEl = document.getElementById('aniimo-recommender-container');
+    if (recommenderEl && recommenderCard) {
+        recommendAniimos(kept, homelandHolds, recommenderAllowPrismana).then(recData => {
+            if (recData && recData.recommendations && recData.recommendations.length > 0) {
+                recommenderCard.style.display = 'block';
+                renderRecommenderUI(recData, recommenderEl, (newAllowPrismana) => {
+                    recommenderAllowPrismana = newAllowPrismana;
+                    renderAniimoSummary(plan);
+                }, recommenderAllowPrismana);
+            } else {
+                recommenderCard.style.display = 'none';
+            }
+        }).catch(err => {
+            console.error('Error al generar recomendaciones de Aniimos:', err);
+            recommenderCard.style.display = 'none';
+        });
+    }
 }
 
 // Splits one environment mode's rows across its individual building units. Unlike the old
@@ -3441,9 +3466,9 @@ function renderEnvironmentDiagram(layout, mode, building, rows = [], unit = null
             : [
                 swatch(tintOf(modes[0]), `${building}: ${modes[0]}`),
                 swatch(tintOf(modes[1]), `${unit.partner[0]}: ${modes[1]}`),
-                swatch(tint, zone === 1 ? `${mode} where both reach` : `${mode}, this plan's plots`),
+                swatch(tint, zone === 1 ? `${mode} donde ambos confluyen` : `${mode}, parcelas de este plan`),
             ])
-        : [swatch(tint, `${mode} coverage`)];
+        : [swatch(tint, `Cobertura ${mode}`)];
     const legend = coverageLegend.concat(Object.entries(counts).map(([key, n]) => {
         const [facility, crop] = key.split('|');
         // The number a plot carries in the diagram reads as part of the facility's name, as the
@@ -3510,7 +3535,7 @@ function renderFacilityPlan(plan) {
     );
 
     if (steps.length === 0) {
-        container.innerHTML = '<p class="hint">Nothing profitable to produce with the current facilities.</p>';
+        container.innerHTML = '<p class="hint">No hay nada rentable que producir con las instalaciones actuales.</p>';
         return;
     }
 
@@ -3552,7 +3577,7 @@ function renderFacilityPlan(plan) {
         const middle = zones.find(z => z.zone === 1)?.mode;
         return `
             <div class="facility-category">
-                <h4 class="facility-category-title">${unit.building} ${modeTag(modes[0])}<span class="env-head-sep">|</span>${unit.partner[0]} ${modeTag(modes[1])}${middle ? `<span class="env-head-sep">|</span>Overlap ${modeTag(middle)}` : ''}</h4>
+                <h4 class="facility-category-title">${unit.building} ${modeTag(modes[0])}<span class="env-head-sep">|</span>${unit.partner[0]} ${modeTag(modes[1])}${middle ? `<span class="env-head-sep">|</span>Solapamiento ${modeTag(middle)}` : ''}</h4>
                 <div class="env-unit">
                     ${renderEnvironmentDiagram(zones.flatMap(z => z.layout), zones[0].mode, unit.building, zones.flatMap(z => z.rows), unit, zones)}
                     <div class="env-unit-table">${facilityPlanTableOf(zones.map(z => ({ label: modeTag(z.mode), rows: z.rows })))}</div>
@@ -3664,7 +3689,7 @@ function updateRateDisplay(pickUnit = false) {
     }).join('');
     table.innerHTML = `
         <table class="level-up-lines rate-table">
-            <thead><tr><th>#</th><th>Priority</th><th id="priority-rate-head"></th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Prioridad</th><th id="priority-rate-head"></th><th></th></tr></thead>
             <tbody>${body}</tbody>
         </table>`;
     document.getElementById('priority-rate-head').appendChild(select);
@@ -4130,14 +4155,14 @@ function renderRecipeTables(recipes) {
                         <table class="recipe-table">
                             <thead>
                                 <tr>
-                                    <th>Item</th>
-                                    <th>Level</th>
-                                    <th>Inputs</th>
-                                    <th>Yield</th>
-                                    <th>Time <span class="info-icon" data-tooltip="Grow time for crops and trees, before watering takes an eighth off it twice. Everything else lists workload: at 100% Efficiency a processor gets through one workload a second, a gathering facility 1.25 on a level-2 recipe and 1.5 on a level-3 one. An Aniimo at the level a recipe needs works at 100%; higher levels are faster, up to level 4 (at a processor, 300% one level above, then +100% per level; at gathering facilities each level adds half a workload a second, reading as +50% on a level-1 recipe, +40% on a level-2 one and +33% on a level-3 one).">?</span></th>
-                                    <th>Sell</th>
-                                    <th>Module</th>
-                                    <th>Aniimo <span class="info-icon" data-tooltip="The lowest ability level that can make this, and the best Aniimo for it: level 4, the top, with the facility's personality (+20% speed). For crops and trees, the ability each job needs, in order.">?</span></th>
+                                    <th>Artículo</th>
+                                    <th>Nivel</th>
+                                    <th>Ingredientes</th>
+                                    <th>Rendimiento</th>
+                                    <th>Tiempo <span class="info-icon" data-tooltip="Tiempo de crecimiento para cultivos y árboles, antes de que el riego descuente un octavo dos veces. Todo lo demás indica carga de trabajo: al 100% de Eficiencia un procesador completa 1 punto de carga por segundo, una instalación de recolección 1.25 en nivel 2 y 1.5 en nivel 3. Un Aniimo al nivel requerido rinde al 100%; niveles superiores son más rápidos hasta nivel 4.">?</span></th>
+                                    <th>Venta</th>
+                                    <th>Módulo</th>
+                                    <th>Aniimo <span class="info-icon" data-tooltip="Nivel mínimo de habilidad necesario y mejor Aniimo: nivel 4 con la personalidad de la instalación (+20% velocidad).">?</span></th>
                                 </tr>
                             </thead>
                             <tbody>${rows}</tbody>

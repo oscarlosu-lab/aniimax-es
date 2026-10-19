@@ -194,7 +194,7 @@
                             <div class="tabs compact" role="radiogroup" aria-label="Aniimo setup">
                                 <label title="Los mejores Aniimo que tienes, con la personalidad de cada instalación"><input type="radio" name="aniimo-setup" id="aniimo-best" value="best" checked> El mejor</label>
                                 <label title="El nivel de habilidad más bajo que acepta cada receta: el mínimo necesario"><input type="radio" name="aniimo-setup" id="aniimo-minimum" value="minimum"> Mínimo</label>
-                                <label title="Plan with the Aniimo you actually have"><input type="radio" name="aniimo-setup" id="aniimo-custom" value="custom"> My Aniimo</label>
+                                <label title="Planifica con los Aniimos que realmente tienes"><input type="radio" name="aniimo-setup" id="aniimo-custom" value="custom"> Mis Aniimo</label>
                             </div>
                         </div>
                         <div class="aniimo-setup-panel" id="aniimo-setup-panel">
@@ -205,15 +205,19 @@
                         <p class="aniimo-count" id="aniimo-count" hidden><span id="aniimo-count-have">0</span><span class="aniimo-count-of" id="aniimo-count-of"></span></p>
                         <p class="collapsed-summary" id="aniimo-collapsed-summary"></p>
                         <div class="ability-strip" id="aniimo-abilities" aria-label="Aniimo needed per ability"></div>
-                        <p class="hint small" id="aniimo-pending" style="display: none;">Still working this setup out...</p>
+                        <p class="hint small" id="aniimo-pending" style="display: none;">Calculando esta configuración...</p>
                         <div id="aniimo-body" hidden>
                             <details class="explain">
-                                <summary>How the team is worked out</summary>
-                                <p><strong>Best</strong>: the best Aniimo you have of each ability (pick its level above), with each facility's personality. <strong>My Aniimo</strong>: the Aniimo you list; each works what its abilities allow, for the hours it has. <strong>Minimum</strong>: the lowest ability level each recipe accepts, with no personality bonus. The plan below follows whichever is picked.</p>
-                                <p>An Aniimo can take any job needing its ability at or below its level while it has hours to spare, as long as no two of its facilities want opposite personalities. It has four personalities, one from each pair, shown as letters over its portrait: Instinctive or Energetic (I/E), Nimble or Practical (N/S), Faithful or Tenacious (F/T), Playful or Judicious (P/J). Facilities with a resident Aniimo (Sandcastle, Dewy House and the like) need one each, and so does each Heat Furnace (Fire), Cooling Unit (Ice) and Sunlamp (Light) in use. With My Aniimo, Farmland and Woodland jobs only need someone able to do each; they're quick, so they aren't counted against anyone's hours. Not yet checked in game: each recipe's minimum ability level, the Farmland and Woodland jobs, and whether an environment building's Aniimo level or personality matters.</p>
+                                <summary>Cómo se calcula el equipo</summary>
+                                <p><strong>El mejor</strong>: el mejor Aniimo que tienes para cada habilidad con la personalidad de cada instalación (+20% de velocidad). <strong>Mis Aniimo</strong>: los Aniimos que tienes registrados; cada uno trabaja según sus habilidades y horas disponibles. <strong>Mínimo</strong>: el nivel de habilidad más bajo que acepta cada receta, sin bonificación de personalidad.</p>
+                                <p>Un Aniimo puede asumir cualquier tarea que requiera su habilidad en su nivel o inferior mientras tenga horas libres. Cada criatura tiene personalidades compatibles con las instalaciones. Las instalaciones con residente (Castillo de Arena, Casa del Rocío, etc.) y los edificios de ambiente (Horno de calor, Unidad de enfriamiento, Lámpara solar) requieren un trabajador permanente cada uno.</p>
                             </details>
                             <div id="aniimo-summary"></div>
                         </div>
+                    </div>
+
+                    <div class="card production-steps" id="aniimo-recommender-card" style="display: none;">
+                        <div id="aniimo-recommender-container"></div>
                     </div>
 
                     <div class="card rate-card">
@@ -229,10 +233,10 @@
                         <div class="rate-line" id="rate-line">
                             <span class="summary-value" id="plan-rate">-</span>
                             <select id="rate-unit" class="rate-unit-select" aria-label="Rate unit">
-                                <option value="second">per second</option>
-                                <option value="minute">per minute</option>
-                                <option value="hour">per hour</option>
-                                <option value="day">per day</option>
+                                <option value="second">por segundo</option>
+                                <option value="minute">por minuto</option>
+                                <option value="hour">por hora</option>
+                                <option value="day">por día</option>
                             </select>
                         </div>
                         <div id="priority-rates"></div>
@@ -254,8 +258,8 @@
                     </div>
 
                     <div class="card production-steps" id="profit-card" style="display: none;">
-                        <h2>Profit by Product</h2>
-                        <p class="hint">Net of seed costs.</p>
+                        <h2>Beneficio por producto</h2>
+                        <p class="hint">Neto tras descontar el coste de semillas.</p>
                         <div id="profit-breakdown"></div>
                     </div>
 
@@ -263,8 +267,8 @@
                         <h2>Qué debe hacer cada instalación</h2>
                         <details class="explain">
                             <summary>Cómo interpretar esto</summary>
-                            <p>Cada fila es un producto; una instalación dividida entre varios productos tiene una fila para cada uno. Crops that need a growing environment are grouped by the Heat Furnace, Cooling Unit or Sunlamp setting that covers them, with its layout. Everything else is grouped like the facility list.</p>
-                            <p>In the Aniimo column, each circle is an ability in its game color with the Aniimo level inside; a ring means the plan counts on the facility's personality bonus. Hover a circle for details.</p>
+                            <p>Cada fila es un producto; una instalación dividida entre varios productos tiene una fila para cada uno. Los cultivos que necesitan ambiente térmico se agrupan según la cobertura del Horno de calor, Unidad de enfriamiento o Lámpara solar.</p>
+                            <p>En la columna Aniimo, cada círculo indica la habilidad requerida con su color oficial y nivel interior; un anillo exterior indica la bonificación de personalidad (+20%). Pasa el cursor por un círculo para ver los detalles.</p>
                         </details>
                         <!-- Populated by app.js's renderFacilityPlan(): one section per
                              environment mode in use (Cool/Warm/Freeze/Scorching/Adequate) first,
@@ -278,7 +282,7 @@
                         <p class="hint" id="layout-summary"></p>
                         <details class="explain">
                             <summary>Cómo está organizado</summary>
-                            <p>Every finished batch is carried to the Storage Unit (SU), so each facility is placed by its trips per hour times its straight-line distance to it: the busiest sit closest, idle ones go to the edge. Each environment building's plots can go anywhere its coverage still reaches them, so they sit on its Storage Unit side. No covered plot reaches another building's coverage, and a crop that needs an environment but is grown without one stays out of all of it, so every crop keeps the temperature the plan gave it. Crops that need no environment can go anywhere. Everything stays within the plots your RV level has open (each 20 by 15 tiles; in Advanced mode, the lowest RV level that allows what you entered), and the Storage Unit goes wherever the walking comes out least. Hover or tap a facility for its trips and distance. The diagram plays the homeland out in sped-up game time from when everything is set up: each finished batch goes to the Storage Unit (carrying takes no time here), and a recipe starts only once what it takes is there. A ring on each facility shows its batch, amber while it waits for materials. This is a close-packed arrangement worked out step by step, not a proven shortest one.</p>
+                            <p>Cada lote terminado se transporta a la Unidad de almacenamiento (UA), por lo que cada instalación se sitúa calculando sus viajes por hora multiplicados por su distancia en línea recta: las más activas quedan más cerca y las menos activas en los bordes. Los edificios ambientales se colocan optimizando la cobertura de sus parcelas correspondientes. Pasa el cursor o pulsa sobre una instalación para ver sus viajes y distancia.</p>
                         </details>
                         <div class="layout-controls">
                             <span class="layout-toggles">
@@ -296,15 +300,15 @@
                         <div class="config-group">
                             <div class="input-row">
                                 <div class="input-field">
-                                    <label for="goal-target">Goal</label>
+                                    <label for="goal-target">Objetivo</label>
                                     <select id="goal-target"></select>
                                 </div>
                                 <div class="input-field">
-                                    <label for="target-amount" id="target-amount-label">Target Home Coins</label>
+                                    <label for="target-amount" id="target-amount-label">Monedas del Hogar objetivo</label>
                                     <input type="number" id="target-amount" value="1000" min="0">
                                 </div>
                                 <div class="input-field">
-                                    <label for="current-amount" id="current-amount-label">Current Home Coins</label>
+                                    <label for="current-amount" id="current-amount-label">Monedas del Hogar actuales</label>
                                     <input type="number" id="current-amount" value="0" min="0">
                                 </div>
                             </div>
@@ -313,11 +317,11 @@
                         <div class="result-summary">
                             <div class="summary-grid">
                                 <div class="summary-item">
-                                    <span class="summary-label">Total Time</span>
+                                    <span class="summary-label">Tiempo total</span>
                                     <span class="summary-value" id="total-time">-</span>
                                 </div>
                                 <div class="summary-item">
-                                    <span class="summary-label" id="amount-produced-label">Home Coins Produced</span>
+                                    <span class="summary-label" id="amount-produced-label">Monedas del Hogar producidas</span>
                                     <span class="summary-value" id="amount-produced">-</span>
                                 </div>
                             </div>
@@ -325,16 +329,16 @@
                         <p class="level-up-coins" id="goal-also" style="display: none;"></p>
 
                         <div class="production-steps" id="product-breakdown-section" style="display: none;">
-                            <h3>Product Breakdown</h3>
+                            <h3>Desglose de productos</h3>
                             <div class="table-wrapper">
                                 <table id="product-breakdown-table">
                                     <thead>
                                         <tr>
-                                            <th>Item</th>
-                                            <th>Facility</th>
-                                            <th>Amount</th>
-                                            <th id="product-breakdown-rate-header">Profit</th>
-                                            <th>Worth <span class="th-unit">Home Coins</span></th>
+                                            <th>Artículo</th>
+                                            <th>Instalación</th>
+                                            <th>Cantidad</th>
+                                            <th id="product-breakdown-rate-header">Beneficio</th>
+                                            <th>Valor <span class="th-unit">Monedas del Hogar</span></th>
                                             <th id="product-breakdown-points-header" hidden>Puntos del Festival de la Luna</th>
                                         </tr>
                                     </thead>
