@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aniimax - Aniimo Production Optimizer</title>
+    <title>Aniimaster - Optimizador del Hogar de Aniimo</title>
     <link rel="stylesheet" href="style.css">
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
     <header>
-        <h1>aniimax</h1>
+        <h1>aniimaster</h1>
         <div class="header-buttons">
             <button class="toggle-button" id="bilingualToggle" title="Alternar nombres bilingües Español / Inglés">🌐 Bilingüe (ES/EN)</button>
             <select id="language-switch" class="toggle-button" aria-label="Language"></select>
@@ -53,7 +53,7 @@
                     </div>
                     <p class="hint">Asume que has construido y mejorado todo lo que permite tu nivel de casa rodante.</p>
                     <details class="explain simple-details">
-                        <summary id="simple-summary-title">Facilities and modules</summary>
+                        <summary id="simple-summary-title">Instalaciones y módulos</summary>
                         <div id="simple-summary"></div>
                     </details>
                 </div>
@@ -78,33 +78,33 @@
 
                     <div class="modules-grid">
                         <div class="module-card">
-                            <h4>Módulo ecológico <span class="info-icon" data-tooltip="Lv.1: Quick Wheat&#10;Lv.2: Quick Bamboo&#10;Lv.3: Quick Potato&#10;Lv.4: Quick Lemon&#10;Lv.5: Quick Rice&#10;Lv.6: Quick Maple Syrup&#10;Lv.7: Quick Strawberry&#10;Lv.8: Quick Coconut">?</span></h4>
+                            <h4>Módulo ecológico <span class="info-icon" data-tooltip="Lv.1: Trigo Rápido&#10;Lv.2: Bambú Rápido&#10;Lv.3: Patata Rápida&#10;Lv.4: Limón Rápido&#10;Lv.5: Arroz Rápido&#10;Lv.6: Sirope de Arce Rápido&#10;Lv.7: Fresa Rápida&#10;Lv.8: Coco Rápido">?</span></h4>
                             <div class="input-field">
-                                <label for="ecological-module-level">Level</label>
+                                <label for="ecological-module-level">Nivel</label>
                                 <input type="number" id="ecological-module-level" value="0" min="0" max="10">
                             </div>
                         </div>
 
                         <div class="module-card">
-                            <h4>Módulo de cocina <span class="info-icon" data-tooltip="Lv.2: Premium Bread&#10;Lv.3: Premium Potato Soup&#10;Lv.4: Premium Sweet Rice Wine&#10;Lv.5: Premium Salted Lemon&#10;Lv.6: Premium Jello&#10;Lv.7: Premium Berry Chocolate Coconut Pudding">?</span></h4>
+                            <h4>Módulo de cocina <span class="info-icon" data-tooltip="Lv.2: Pan Prémium&#10;Lv.3: Sopa de Patata Prémium&#10;Lv.4: Vino Dulce de Arroz Prémium&#10;Lv.5: Limón Salado Prémium&#10;Lv.6: Gelatina Prémium&#10;Lv.7: Pudin de Fresa, Chocolate y Coco Prémium">?</span></h4>
                             <div class="input-field">
-                                <label for="kitchen-module-level">Level</label>
+                                <label for="kitchen-module-level">Nivel</label>
                                 <input type="number" id="kitchen-module-level" value="0" min="0" max="10">
                             </div>
                         </div>
 
                         <div class="module-card">
-                            <h4>Detector de recursos <span class="info-icon" data-tooltip="Lv.1: Quick Well Water&#10;Lv.2: Quick Sea Salt&#10;Lv.3: Quick Aromathyst&#10;Lv.4: Quick Fresh Water&#10;Lv.5: Quick Wool&#10;Lv.6: Quick Deep Rock Spring Water&#10;Lv.7: Quick Natural Mineral Spring Water&#10;Lv.8: Quick Scales">?</span></h4>
+                            <h4>Detector de recursos <span class="info-icon" data-tooltip="Lv.1: Agua de Pozo Rápida&#10;Lv.2: Sal Marina Rápida&#10;Lv.3: Aromatista Rápida&#10;Lv.4: Agua Dulce Rápida&#10;Lv.5: Lana Rápida&#10;Lv.6: Agua de Manantial de Roca Profunda Rápida&#10;Lv.7: Agua Mineral Natural Rápida&#10;Lv.8: Escamas Rápidas">?</span></h4>
                             <div class="input-field">
-                                <label for="resource-detector-level">Level</label>
+                                <label for="resource-detector-level">Nivel</label>
                                 <input type="number" id="resource-detector-level" value="0" min="0" max="10">
                             </div>
                         </div>
 
                         <div class="module-card">
-                            <h4>Módulo de artesanía <span class="info-icon" data-tooltip="Lv.1: Premium River-Washed Stones&#10;Lv.2: Premium Rose Freshener&#10;Lv.3: Advanced Lemon Incense&#10;Lv.4: Advanced Wind Chime&#10;Lv.5: Premium Soap&#10;Lv.6: Advanced Gemstone Dust&#10;Lv.7: Premium Mixed Perfume">?</span></h4>
+                            <h4>Módulo de artesanía <span class="info-icon" data-tooltip="Lv.1: Cantos Rodados Prémium&#10;Lv.2: Ambientador de Rosas Prémium&#10;Lv.3: Incienso de Limón Avanzado&#10;Lv.4: Campanilla de Viento Avanzada&#10;Lv.5: Jabón Prémium&#10;Lv.6: Polvo de Gemas Avanzado&#10;Lv.7: Perfume Mixto Prémium">?</span></h4>
                             <div class="input-field">
-                                <label for="crafting-module-level">Level</label>
+                                <label for="crafting-module-level">Nivel</label>
                                 <input type="number" id="crafting-module-level" value="0" min="0" max="10">
                             </div>
                         </div>
@@ -119,7 +119,7 @@
                     </div>
 
                     <div id="priorities-config" style="display: none;">
-                        <p class="hint">Switch on what you want and drag to rank it. The plan makes as much of the first as it can, then as much of the next as that allows, and so on. Whatever's left always goes to Home Coins.</p>
+                        <p class="hint">Activa lo que deseas producir y arrastra para ordenarlo. El plan fabrica todo lo posible del primero, luego todo lo posible del siguiente con los recursos restantes, y así sucesivamente. Cualquier capacidad sobrante se destina a Monedas del Hogar.</p>
                         <ol class="priority-list" id="priority-list"></ol>
                     </div>
 
@@ -127,14 +127,14 @@
                         <p class="hint">Obtiene todo lo que cuesta tu siguiente nivel de casa rodante lo antes posible, y luego genera todas las monedas del hogar que el espacio permita.</p>
                         <div class="input-row" id="level-up-target-row">
                             <div class="input-field">
-                                <label for="level-up-target">Level up to RV</label>
+                                <label for="level-up-target">Subir a nivel de RV</label>
                                 <select id="level-up-target"></select>
                             </div>
                         </div>
                         <div id="level-up-cost"></div>
                         <details class="explain" id="level-up-stock">
-                            <summary>What you already have</summary>
-                            <p class="hint small">Counts toward the level-up. Wood Blocks, Mineral Sand and lower tiers get processed up.</p>
+                            <summary>Lo que ya tienes</summary>
+                            <p class="hint small">Cuenta para los requisitos de subida de nivel. Los Bloques de madera, Arena mineral y materiales inferiores se procesan automáticamente.</p>
                             <div class="stock-grid" id="level-up-stock-grid"></div>
                         </details>
                     </div>
@@ -148,33 +148,33 @@
                         <span class="season-title">Festival de la Luna de la Cosecha</span>
                     </label>
                     <div id="season-config" hidden>
-                        <p class="hint">A seasonal event with its own currency, Moonray Wheat, which buys the season's seeds. Keeping enough wheat on hand is up to you; plans show how much their seeds use. Season items also earn Puntos del Festival de la Luna, which you can rank under Priorities.</p>
+                        <p class="hint">Un evento de temporada con su propia moneda, el Trigo del Rayo Lunar, con el que se compran las semillas de temporada. Gestionar el trigo necesario depende de ti; los planes indican cuánto consumen sus semillas. Los artículos del evento también otorgan Puntos del Festival de la Luna, que puedes clasificar en Prioridades.</p>
                         <div class="input-field">
-                            <label for="season-currency-per-day">Moonray Wheat you can spend on seeds a day</label>
-                            <input type="number" id="season-currency-per-day" min="0" placeholder="No limit">
+                            <label for="season-currency-per-day">Trigo del Rayo Lunar para gastar en semillas al día</label>
+                            <input type="number" id="season-currency-per-day" min="0" placeholder="Sin límite">
                         </div>
-                        <p class="assume-title">Recipe Notes</p>
+                        <p class="assume-title">Notas de recetas</p>
                         <div class="special-grid" id="season-notes"></div>
                     </div>
                 </div>
 
                 <details class="explain recipes-section" id="recipes-section">
-                    <summary>Recipes<span class="skip-count" id="recipe-count"></span></summary>
-                    <p class="assume-title">Special recipes</p>
-                    <p class="hint small">These take a rare currency to unlock. Plans only use the ones you tick.</p>
+                    <summary>Recetas<span class="skip-count" id="recipe-count"></span></summary>
+                    <p class="assume-title">Recetas especiales</p>
+                    <p class="hint small">Requieren una moneda poco común para desbloquearse. Los planes solo utilizan las que marques.</p>
                     <div class="special-grid" id="special-grid"></div>
-                    <p class="assume-title">Recipes to skip</p>
-                    <p class="hint small">Plans won't use these, e.g. recipes behind unlocks you don't have yet. You can also skip one straight from a plan with its ✕.</p>
+                    <p class="assume-title">Recetas a omitir</p>
+                    <p class="hint small">Los planes no las usarán, p. ej. recetas bloqueadas que aún no tienes. También puedes omitir una directamente desde un plan pulsando su ✕.</p>
                     <div class="skip-add">
-                        <input type="text" id="skip-input" list="skip-options" placeholder="Search recipes" autocomplete="off" aria-label="Recipe to skip">
-                        <button type="button" id="skip-add-btn" class="skip-add-btn">Skip</button>
+                        <input type="text" id="skip-input" list="skip-options" placeholder="Buscar recetas" autocomplete="off" aria-label="Receta a omitir">
+                        <button type="button" id="skip-add-btn" class="skip-add-btn">Omitir</button>
                     </div>
                     <datalist id="skip-options"></datalist>
                     <div class="skip-chips" id="skip-chips"></div>
                 </details>
                 <button id="optimize-btn" class="optimize-btn">
-                    <span class="btn-text">Find the best plan</span>
-                    <span class="btn-loading" style="display: none;">Solving...</span>
+                    <span class="btn-text">Encontrar el mejor plan</span>
+                    <span class="btn-loading" style="display: none;">Calculando plan...</span>
                 </button>
                 <div id="progress-bar-container" class="progress-bar-container" style="display: none;">
                     <div id="progress-bar-fill" class="progress-bar-fill"></div>
@@ -342,6 +342,7 @@
                             <span class="layout-toggles">
                                 <label class="layout-whole"><input type="checkbox" id="layout-whole"> Mostrar todo el hogar</label>
                                 <label class="layout-whole"><input type="checkbox" id="layout-sim-on" checked> Simular</label>
+                                <label class="layout-storage-label" title="Cantidad de Unidades de Almacenamiento en tu hogar">📦 Almacenes: <input type="number" id="layout-storage-count" min="1" max="10" value="1" class="storage-count-input"></label>
                             </span>
                             <span class="layout-sim" id="layout-sim" hidden><span id="layout-clock">0h 00m</span><button type="button" class="toggle-button small" id="layout-replay">Reproducir</button></span>
                         </div>
@@ -402,16 +403,16 @@
                         </div>
 
                         <div class="production-steps" id="seeds-needed-section" style="display: none;">
-                            <h3>Seeds Needed</h3>
+                            <h3>Semillas necesarias</h3>
                             <div class="table-wrapper">
                                 <table id="seeds-needed-table">
                                     <thead>
                                         <tr>
-                                            <th>Crop</th>
-                                            <th>Facility</th>
-                                            <th>Plots</th>
-                                            <th>Plantings/Plot</th>
-                                            <th>Total Seeds</th>
+                                            <th>Cultivo</th>
+                                            <th>Instalación</th>
+                                            <th>Parcelas</th>
+                                            <th>Siembras/Parcela</th>
+                                            <th>Total semillas</th>
                                         </tr>
                                     </thead>
                                     <tbody id="seeds-needed-tbody"></tbody>
@@ -424,9 +425,9 @@
         </main>
 
         <footer>
-            <p>aniimax v<span id="version">-</span> | <a href="https://github.com/ae-bii/aniimax" target="_blank">github</a></p>
-            <p class="footer-note">Unofficial fan-made tool. Not affiliated with or endorsed by the makers of Aniimo.</p>
-            <p class="footer-note">Your inputs are saved in your browser and never sent anywhere.</p>
+            <p>aniimaster v<span id="version">-</span> | Basado en <a href="https://github.com/ae-bii/aniimax" target="_blank" rel="noopener">Aniimax</a> por @ae-bii</p>
+            <p class="footer-note">Herramienta no oficial creada por la comunidad. No está afiliada ni respaldada por los desarrolladores de Aniimo.</p>
+            <p class="footer-note">Tus datos se guardan exclusivamente en tu navegador y nunca se envían a servidores externos.</p>
         </footer>
     </div>
 
@@ -434,12 +435,12 @@
     <div id="facilitiesModal" class="modal" onclick="closeFacilitiesOnBackdrop(event)">
         <div class="modal-content wide">
             <div class="modal-header">
-                <h2>Facility Recipes</h2>
+                <h2>Recetas de instalaciones</h2>
                 <button class="close-button" onclick="closeFacilities()">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="hint">Every recipe in the game data, grouped by facility. This is a reference table, not tied to your owned facility counts or levels.</p>
-                <p class="hint small" id="facilities-loading-hint">Loading recipe data...</p>
+                <p class="hint">Todas las recetas presentes en los datos del juego, agrupadas por instalación. Esta es una tabla de referencia independiente de tus niveles o instalaciones construidas.</p>
+                <p class="hint small" id="facilities-loading-hint">Cargando datos de recetas...</p>
                 <div id="facilities-modal-container" class="facilities-container"></div>
             </div>
         </div>

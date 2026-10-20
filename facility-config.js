@@ -275,6 +275,15 @@ export const FACILITY_FOOTPRINTS = {
     'Storage Unit': [2, 2],
 };
 
+// Unidades de almacenamiento desbloqueadas por nivel de RV en el juego oficial de Aniimo
+export function defaultStorageUnits(rvLevel) {
+    if (rvLevel >= 16) return 5;
+    if (rvLevel >= 12) return 4;
+    if (rvLevel >= 8) return 3; // RV 8-11: 3 Unidades (ej. en RV 10 son 3)
+    if (rvLevel >= 5) return 2; // RV 5-7: 2 Unidades
+    return 1;                   // RV 1-4: 1 Unidad
+}
+
 // The homeland: a 4x4 grid of plots, each 20 tiles wide and 15 tall, plot n opening at RV n (and
 // all of them from RV 16). Rows from the top, by plot number; the first opens bottom middle.
 export const HOMELAND_PLOT_SIZE = { w: 20, h: 15 };

@@ -7,6 +7,7 @@ import {
     FACILITIES, FACILITY_CATEGORIES, FACILITY_CATEGORY_BY_NAME, FACILITY_FOOTPRINTS, HOMELAND_PLOTS, HOMELAND_PLOT_SIZE,
     MAX_HOME_LEVEL, ANIIMO_MAX, simpleSetup,
     LEVEL_UP_COSTS, LEVEL_UP_CHAINS, SPECIAL_RECIPES, SEASON, ANIIPOD_TIERS, PERSONALITY_PAIRS, personalityLetter, opposedPersonality,
+    defaultStorageUnits
 } from './facility-config.js?v=rv14-rv20-facility-counts';
 import { allocateTurnFacilities, redistributeTurnFacilityRows } from './turn-jobs.js';
 import { createShareUrl, readShareHash, urlWithoutShare } from './share-config.js';
@@ -15,6 +16,8 @@ import { initExtraFeatures, updateExecutiveKPI, updateFoodAutonomy } from './ext
 import { setBilingual, isBilingual } from './i18n.js';
 
 let recommenderAllowPrismana = true;
+let recommenderOnlyWild = false;
+let recommenderSwaps = {};
 
 let wasmReady = false;
 
@@ -1252,6 +1255,17 @@ function renderHomelandLayout(plan) {
     const { pieces, unplaced } = homelandPieces(plan, lastPlanInput);
     const homeLevel = layoutHomeLevel();
     const cells = homelandPlots().filter(p => p.number <= homeLevel);
+
+    const storageInput = document.getElementById('layout-storage-count');
+    let storageCount = defaultStorageUnits(homeLevel);
+    if (storageInput) {
+        if (!storageInput.dataset.userEdited) {
+            storageInput.value = storageCount;
+        } else {
+            storageCount = Math.max(1, parseInt(storageInput.value, 10) || storageCount);
+        }
+    }
+
     if (layoutWorker) layoutWorker.terminate();
     layoutWorker = new Worker(WORKER_URL.replace('worker.js', 'layout-worker.js'), { type: 'module' });
     layoutWorker.onmessage = (event) => {
@@ -1259,23 +1273,29 @@ function renderHomelandLayout(plan) {
         layoutWorker = null;
         if (runId !== layoutRunId) return;
         const layout = event.data;
+        const storages = layout.storages || [layout.storage];
         const at = layout.storageAt;
         // Buildings carry nothing themselves.
         const members = layout.pieces.flatMap(p => p.members).map(m => ({ ...m, weight: m.weight || 0 }));
         const trips = members.reduce((sum, m) => sum + m.weight, 0);
-        const walked = members.reduce((sum, m) => sum + m.weight * Math.hypot(m.x + m.w / 2 - at.x, m.y + m.h / 2 - at.y), 0);
+        const walked = members.reduce((sum, m) => {
+            const dist = Math.min(...storages.map(s => Math.hypot(m.x + m.w / 2 - (s.x + s.w / 2), m.y + m.h / 2 - (s.y + s.h / 2))));
+            return sum + m.weight * dist;
+        }, 0);
         const noRoom = [...new Set(layout.unplaced.map(i => {
             const piece = pieces[i];
-            return piece.cluster ? `${piece.buildings[0].facility} and its plots` : piece.members[0].facility;
+            return piece.cluster ? `${piece.buildings[0].facility} y sus parcelas` : piece.members[0].facility;
         }))];
         const notes = [
-            noRoom.length ? `No room found in RV ${homeLevel}'s plots for: ${noRoom.join(', ')}.` : '',
-            unplaced.length ? `Not placed, size unknown: ${unplaced.join(', ')}.` : '',
+            noRoom.length ? `Sin espacio suficiente en las parcelas de RV ${homeLevel} para: ${noRoom.join(', ')}.` : '',
+            unplaced.length ? `No colocado, tamaño desconocido: ${unplaced.join(', ')}.` : '',
         ].filter(Boolean).join(' ');
+
+        const storageText = storages.length === 1 ? 'la Unidad de almacenamiento' : `las ${storages.length} Unidades de almacenamiento`;
         document.getElementById('layout-summary').textContent = `${trips > 0
-            ? `${formatNumber(Math.round(trips))} trips/hour to the Storage Unit, ${(walked / trips).toFixed(1)} tiles each on average, in the ${cells.length} plot${cells.length === 1 ? '' : 's'} open at RV ${homeLevel}.`
-            : 'Nothing in this plan is carried to the Storage Unit.'}${notes ? ` ${notes}` : ''}`;
-        lastLayout = { layout, homeLevel };
+            ? `${formatNumber(Math.round(trips))} viajes/hora hacia ${storageText}, ${(walked / trips).toFixed(1)} casillas en promedio cada uno, en las ${cells.length} parcela${cells.length === 1 ? '' : 's'} abiertas en RV ${homeLevel}.`
+            : 'Nada en este plan se transporta al almacenamiento.'}${notes ? ` ${notes}` : ''}`;
+        lastLayout = { layout, homeLevel, storageCount };
         drawLayout(lastLayout);
         setStep('layout', 'done');
     };
@@ -1286,7 +1306,7 @@ function renderHomelandLayout(plan) {
         document.getElementById('layout-summary').textContent = translate('No se pudo calcular la distribución.');
         setStep('layout', 'fail');
     };
-    layoutWorker.postMessage({ pieces, cells: cells.map(({ x, y, w, h }) => ({ x, y, w, h })) });
+    layoutWorker.postMessage({ pieces, cells: cells.map(({ x, y, w, h }) => ({ x, y, w, h })), storageCount });
 }
 
 // Stops a layout still being worked out, so it can't land over a newer plan.
@@ -1310,8 +1330,9 @@ function homelandSvg(layout, homeLevel) {
         .map(m => ({ x: m.x + m.w / 2 - ENVIRONMENT_COVERAGE_RADIUS, y: m.y + m.h / 2 - ENVIRONMENT_COVERAGE_RADIUS, w: ENVIRONMENT_COVERAGE_RADIUS * 2, h: ENVIRONMENT_COVERAGE_RADIUS * 2, mode: m.mode }));
     // The whole homeland, its plots marked out and the ones not open yet shaded.
     const plots = homelandPlots();
+    const storages = layout.storages || [layout.storage];
     // Zoomed to what's placed, a couple of tiles around it, unless the whole homeland is asked for.
-    const placed = [layout.storage, ...layout.pieces.flatMap(p => p.members)];
+    const placed = [...storages, ...layout.pieces.flatMap(p => p.members)];
     const whole = layoutShowsWhole;
     const minX = whole ? -1 : Math.floor(Math.min(...placed.map(r => r.x))) - 2;
     const minY = whole ? -1 : Math.floor(Math.min(...placed.map(r => r.y))) - 2;
@@ -1322,7 +1343,7 @@ function homelandSvg(layout, homeLevel) {
         const open = p.number <= homeLevel;
         // An open plot is named by its number; one still to come by the RV level that opens it.
         return `<g class="layout-plot${open ? '' : ' locked'}"><rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" />
-            <text x="${p.x + 0.6}" y="${p.y + 0.9}" font-size="0.9">${open ? 'Plot' : 'RV'} ${p.number}</text></g>`;
+            <text x="${p.x + 0.6}" y="${p.y + 0.9}" font-size="0.9">${open ? 'Parcela' : 'RV'} ${p.number}</text></g>`;
     }).join('');
     const lines = [];
     for (let x = minX; x <= maxX; x++) lines.push(`<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" />`);
@@ -1330,10 +1351,10 @@ function homelandSvg(layout, homeLevel) {
     const maxTrips = Math.max(...layout.pieces.flatMap(p => p.members.map(m => m.weight || 0)), 1e-9);
     const shapes = layout.pieces.flatMap(p => p.members).map(m => {
         const color = layoutColor(m);
-        const away = Math.hypot(m.x + m.w / 2 - (layout.storage.x + layout.storage.w / 2), m.y + m.h / 2 - (layout.storage.y + layout.storage.h / 2));
+        const away = Math.min(...storages.map(s => Math.hypot(m.x + m.w / 2 - (s.x + s.w / 2), m.y + m.h / 2 - (s.y + s.h / 2))));
         const tip = tipAttrs(m.facility, {
-            detail: m.jobs ? m.jobs.map(j => prettyItem(j.item)).join(', ') : m.crop ? prettyItem(m.crop) : m.building && m.mode ? m.mode : 'Idle',
-            stats: m.weight > 0 ? `${formatRate(m.weight)} trips/hour · ${away.toFixed(1)} tiles from storage` : '',
+            detail: m.jobs ? m.jobs.map(j => prettyItem(j.item)).join(', ') : m.crop ? prettyItem(m.crop) : m.building && m.mode ? m.mode : 'Inactiva',
+            stats: m.weight > 0 ? `${formatRate(m.weight)} viajes/hora · ${away.toFixed(1)} casillas al almacén más cercano` : '',
             color,
         });
         const label = Math.min(m.w, m.h) >= 1.5 ? `<text x="${m.x + m.w / 2}" y="${m.y + m.h / 2}" font-size="${Math.min(0.8, m.w / 3)}">${initialsOf(m.facility)}</text>` : '';
@@ -1359,7 +1380,6 @@ function homelandSvg(layout, homeLevel) {
         return `<rect x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}" fill="none"
             stroke="${tint}" stroke-opacity="0.8" stroke-dasharray="0.35,0.25" stroke-width="0.08" />`;
     }).join('');
-    const s = layout.storage;
     // A line from everything carried to the Storage Unit, each drawn once its first batch is in,
     // and a ring for the batch it's on (see "Deliveries"), in the same order as `layoutFlows`.
     const flowList = layoutFlows(layout);
@@ -1367,7 +1387,17 @@ function homelandSvg(layout, homeLevel) {
     const rings = flowList.map(f => `<g class="layout-ring" transform="translate(${f.rx.toFixed(2)} ${f.ry.toFixed(2)})">
             <circle r="${f.ring.toFixed(2)}" class="ring-track" /><circle r="${f.ring.toFixed(2)}" class="ring-fill" pathLength="1" stroke-dasharray="0 1" transform="rotate(-90)" /></g>`).join('');
     const totalTrips = layout.pieces.flatMap(p => p.members).reduce((sum, m) => sum + (m.weight || 0), 0);
-    return `<svg class="layout-svg" viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" role="img" aria-label="Homeland layout">
+
+    const storagePiecesSvg = storages.map((s, idx) => {
+        const title = storages.length > 1 ? `Unidad de almacenamiento ${idx + 1}` : 'Unidad de almacenamiento';
+        const label = storages.length > 1 ? `UA ${idx + 1}` : 'UA';
+        return `<g class="layout-piece layout-storage-unit" ${tipAttrs(title, { detail: 'Adonde se transporta la producción', stats: totalTrips > 0 ? `${formatRate(totalTrips)} viajes/hora totales` : '' })}>
+            <rect x="${s.x + 0.04}" y="${s.y + 0.04}" width="${s.w - 0.08}" height="${s.h - 0.08}" rx="0.2" class="layout-storage" />
+            <text x="${s.x + s.w / 2}" y="${s.y + s.h / 2}" font-size="${storages.length > 1 ? '0.65' : '0.8'}" class="layout-storage-text">${label}</text>
+        </g>`;
+    }).join('');
+
+    return `<svg class="layout-svg" viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" role="img" aria-label="Diseño del Hogar">
         <defs><pattern id="layout-locked" width="1" height="1" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1="0" y1="0" x2="0" y2="1" class="layout-hatch" /></pattern></defs>
         <g class="env-grid">${lines.join('')}</g>
@@ -1377,8 +1407,7 @@ function homelandSvg(layout, homeLevel) {
         <g class="layout-coverage-edges" pointer-events="none">${coverageEdges}</g>
         <g class="layout-rings" pointer-events="none">${rings}</g>
         <g class="layout-flows" pointer-events="none">${flows}<g class="layout-dots"></g></g>
-        <g class="layout-piece layout-storage-unit" ${tipAttrs('Storage Unit', { detail: 'Where everything is carried', stats: totalTrips > 0 ? `${formatRate(totalTrips)} trips/hour` : '' })}><rect x="${s.x + 0.04}" y="${s.y + 0.04}" width="${s.w - 0.08}" height="${s.h - 0.08}" rx="0.2" class="layout-storage" />
-        <text x="${s.x + s.w / 2}" y="${s.y + s.h / 2}" font-size="0.8" class="layout-storage-text">SU</text></g>
+        ${storagePiecesSvg}
     </svg>`;
 }
 
@@ -1407,12 +1436,18 @@ let layoutSim = null;
 // long a batch takes and its pace in the plan (batches a second). Most pieces have one; a Bench
 // or Kiln unit has one per tier it takes turns on (see `homelandPieces`).
 function layoutFlows(layout) {
-    const s = layout.storage;
-    const x2 = s.x + s.w / 2;
-    const y2 = s.y + s.h / 2;
+    const storages = layout.storages || [layout.storage];
     return layout.pieces.flatMap(p => p.members).filter(m => m.weight > 0 && m.crop && m.cycle > 0).map(m => {
         const x1 = m.x + m.w / 2;
         const y1 = m.y + m.h / 2;
+        let bestS = storages[0];
+        let minD = Infinity;
+        for (const s of storages) {
+            const d = Math.hypot(s.x + s.w / 2 - x1, s.y + s.h / 2 - y1);
+            if (d < minD) { minD = d; bestS = s; }
+        }
+        const x2 = bestS.x + bestS.w / 2;
+        const y2 = bestS.y + bestS.h / 2;
         const ring = Math.min(0.45, Math.min(m.w, m.h) * 0.22);
         return {
             x1, y1, x2, y2, length: Math.hypot(x2 - x1, y2 - y1),
@@ -2598,17 +2633,17 @@ function renderProfitBreakdown(plan) {
     const rows = [...streams]
         .sort((a, b) => b.rate_per_second - a.rate_per_second)
         .map(s => `<tr>
-            <td data-label="Product">${prettyItem(s.item_name)}</td>
-            <td data-label="Facility">${s.facility}</td>
-            <td data-label="Sold per hour">${perHour(s.units_per_second)}</td>
-            <td data-label="Profit per hour">${formatNumber(Math.round(s.rate_per_second * 3600))}</td>
-            <td data-label="Share">${total > 0 ? Math.round(s.rate_per_second / total * 100) : 0}%</td>
-            <td data-label="Profit until RV ${planContext?.target}">${formatNumber(Math.floor(s.rate_per_second * report.seconds))}</td>
+            <td data-label="Producto">${prettyItem(s.item_name)}</td>
+            <td data-label="Instalación">${s.facility}</td>
+            <td data-label="Vendido por hora">${perHour(s.units_per_second)}</td>
+            <td data-label="Beneficio por hora">${formatNumber(Math.round(s.rate_per_second * 3600))}</td>
+            <td data-label="Porcentaje">${total > 0 ? Math.round(s.rate_per_second / total * 100) : 0}%</td>
+            <td data-label="Beneficio hasta RV ${planContext?.target}">${formatNumber(Math.floor(s.rate_per_second * report.seconds))}</td>
         </tr>`).join('');
     document.getElementById('profit-breakdown').innerHTML = `
         <div class="table-wrapper">
             <table class="facility-plan-table">
-                <thead><tr><th>Producto</th><th>Instalación</th><th>Vendido/hora</th><th>Beneficio/hora</th><th>Porcentaje</th><th>Beneficio hasta CR ${planContext?.target}</th></tr></thead>
+                <thead><tr><th>Producto</th><th>Instalación</th><th>Vendido/hora</th><th>Beneficio/hora</th><th>Porcentaje</th><th>Beneficio hasta RV ${planContext?.target}</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         </div>`;
@@ -3195,13 +3230,23 @@ function renderAniimoSummary(plan) {
     const recommenderCard = document.getElementById('aniimo-recommender-card');
     const recommenderEl = document.getElementById('aniimo-recommender-container');
     if (recommenderEl && recommenderCard) {
-        recommendAniimos(kept, homelandHolds, recommenderAllowPrismana).then(recData => {
+        recommendAniimos(kept, homelandHolds, {
+            allowPrismana: recommenderAllowPrismana,
+            onlyWild: recommenderOnlyWild,
+            swaps: recommenderSwaps
+        }).then(recData => {
             if (recData && recData.recommendations && recData.recommendations.length > 0) {
                 recommenderCard.style.display = 'block';
-                renderRecommenderUI(recData, recommenderEl, (newAllowPrismana) => {
-                    recommenderAllowPrismana = newAllowPrismana;
+                renderRecommenderUI(recData, recommenderEl, (action) => {
+                    if (action.type === 'toggle-prismana') {
+                        recommenderAllowPrismana = action.value;
+                    } else if (action.type === 'toggle-wild') {
+                        recommenderOnlyWild = action.value;
+                    } else if (action.type === 'swap') {
+                        recommenderSwaps[action.from] = action.to;
+                    }
                     renderAniimoSummary(plan);
-                }, recommenderAllowPrismana);
+                });
                 updateExecutiveKPI(plan, recData.totalAssigned, recData.maxSlots);
                 const nutritionCard = document.getElementById('nutrition-card');
                 if (nutritionCard) nutritionCard.style.display = 'block';
@@ -4053,7 +4098,7 @@ function renderGoalAlso(rows, chosen, seconds, result) {
             .map(r => `${formatNumber(Math.floor(made(r)))} ${goalName(r)}`)
         : [];
     el.style.display = also.length ? 'block' : 'none';
-    el.innerHTML = also.length ? `<span>By then you'll also have:</span> <strong>${also.join(', ')}</strong>` : '';
+    el.innerHTML = also.length ? `<span>Para entonces también habrás obtenido:</span> <strong>${also.join(', ')}</strong>` : '';
 }
 
 // --- Facility recipe reference modal ----------------------------------------------------
@@ -4063,10 +4108,10 @@ function renderGoalAlso(rows, chosen, seconds, result) {
 // `ProductionItem` unfiltered.
 
 const RECIPE_MODULE_LABELS = {
-    ecological_module: 'Ecological Module',
-    kitchen_module: 'Kitchen Module',
-    resource_detector: 'Resource Detector',
-    crafting_module: 'Crafting Module',
+    ecological_module: 'Módulo ecológico',
+    kitchen_module: 'Módulo de cocina',
+    resource_detector: 'Detector de recursos',
+    crafting_module: 'Módulo de artesanía',
 };
 
 // Cached after the first render, since the underlying data never changes for a given wasm build.
@@ -4092,7 +4137,7 @@ function formatRecipeInputs(recipe) {
             .join(', ');
     }
     if (recipe.cost && recipe.cost > 0) {
-        return `Plant cost: ${recipe.cost}`;
+        return `Coste de siembra: ${recipe.cost}`;
     }
     return '-';
 }
@@ -4122,14 +4167,14 @@ function formatRecipeAniimo(recipe, facility) {
             `<span class="job"><span class="job-step">${step}${times > 1 ? ` &times;${times}` : ''}</span> ${abilityTag(ability)}${level > 1 ? ` Lv.${level}+` : ''}</span>`).join('')}</span>`;
     }
     const [ability, minLevel] = recipe.aniimo;
-    const best = `best Lv.${bestAniimoLevel(ability)}${facility.personality ? ' ' + facility.personality : ''}`;
+    const best = `mejor Nv.${bestAniimoLevel(ability)}${facility.personality ? ' ' + facility.personality : ''}`;
     return `<span>${abilityTag(ability)} Lv.${minLevel}+<span class="recipe-best">${best}</span></span>`;
 }
 
 // "44 Home Coins", or what a level-up material is for.
 function formatRecipeSell(recipe) {
-    if (recipe.sell_currency === 'none') return '<span class="hint small">RV level-ups</span>';
-    return `${formatNumber(recipe.sell_value)} ${recipe.sell_value === 1 ? 'Home Coin' : 'Home Coins'}`;
+    if (recipe.sell_currency === 'none') return '<span class="hint small">Subidas de RV</span>';
+    return `${formatNumber(recipe.sell_value)} ${recipe.sell_value === 1 ? 'Moneda del Hogar' : 'Monedas del Hogar'}`;
 }
 
 function formatRecipeModule(recipe) {
@@ -4163,20 +4208,20 @@ function renderRecipeTables(recipes) {
             const cell = (label, value) => `<td data-label="${label}"${value === '-' ? ' class="empty"' : ''}>${value}</td>`;
             const rows = byFacility.get(f.name).map(r => `
                 <tr${r.verified === false ? ' class="unverified"' : ''}>
-                    <td class="recipe-name">${prettyItem(r.name)}${SPECIAL_NAMES.has(r.name) ? ' <span class="tag special" title="Takes a rare currency to unlock">special</span>' : ''}${r.season ? ` <span class="tag special" title="${SEASON.name} only">season</span>` : ''}${r.verified === false ? ' <span class="info-icon" data-tooltip="Not yet checked in game.">?</span>' : ''}</td>
-                    ${cell('Level', r.facility_level)}
-                    ${cell('Inputs', formatRecipeInputs(r))}
-                    ${cell('Yield', formatRecipeYield(r))}
-                    ${cell('Time', r.workload ? `${r.workload} workload` : formatRecipeTime(r.production_time))}
-                    ${cell('Sell', formatRecipeSell(r))}
-                    ${cell('Module', formatRecipeModule(r))}
+                    <td class="recipe-name">${prettyItem(r.name)}${SPECIAL_NAMES.has(r.name) ? ' <span class="tag special" title="Requiere moneda especial para desbloquearse">especial</span>' : ''}${r.season ? ` <span class="tag special" title="Solo en ${SEASON.name}">temporada</span>` : ''}${r.verified === false ? ' <span class="info-icon" data-tooltip="Aún no verificado en el juego.">?</span>' : ''}</td>
+                    ${cell('Nivel', r.facility_level)}
+                    ${cell('Ingredientes', formatRecipeInputs(r))}
+                    ${cell('Rendimiento', formatRecipeYield(r))}
+                    ${cell('Tiempo', r.workload ? `${r.workload} carga de trabajo` : formatRecipeTime(r.production_time))}
+                    ${cell('Venta', formatRecipeSell(r))}
+                    ${cell('Módulo', formatRecipeModule(r))}
                     ${cell('Aniimo', formatRecipeAniimo(r, f))}
                 </tr>
             `).join('');
 
             return `
                 <div class="facility-recipe-table">
-                    <h4>${f.name}</h4>
+                    <h4>${prettyFacility(f.name) || f.name}</h4>
                     <div class="table-wrapper">
                         <table class="recipe-table">
                             <thead>
