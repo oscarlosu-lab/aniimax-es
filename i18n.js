@@ -32,6 +32,18 @@ const textSources = new WeakMap();
 const attributeSources = new WeakMap();
 const attributes = ['title', 'aria-label', 'aria-description', 'placeholder', 'data-label', 'data-tooltip', 'data-tip', 'data-tip-detail', 'data-tip-stats', 'data-tip-text'];
 
+let bilingualMode = false;
+try { bilingualMode = localStorage.getItem('aniimax-bilingual') === 'true'; } catch (_) {}
+
+export function isBilingual() {
+    return bilingualMode;
+}
+
+export function setBilingual(val) {
+    bilingualMode = val;
+    try { localStorage.setItem('aniimax-bilingual', val); } catch (_) {}
+}
+
 export function translate(value) {
     if (language === 'en' || !value) return value;
     if (language === 'zh-TW') return (translateZhTw ??= createZhTwTranslator(catalogs['zh-TW']))(value);
@@ -39,7 +51,12 @@ export function translate(value) {
     if (!phrases) return value;
     const trimmed = value.trim();
     const translated = phrases[trimmed];
-    if (translated) return value.replace(trimmed, translated);
+    if (translated) {
+        if (bilingualMode && language === 'es' && trimmed.length < 32 && !trimmed.includes('.') && !trimmed.includes('{') && translated !== trimmed) {
+            return value.replace(trimmed, `${translated} (${trimmed})`);
+        }
+        return value.replace(trimmed, translated);
+    }
     // Dynamic labels keep their values while the source sentence remains translatable.
     for (const { pattern, slots, target } of templates[language] || []) {
         const match = trimmed.match(pattern);

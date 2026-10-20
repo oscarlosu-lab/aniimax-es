@@ -11,6 +11,7 @@
     <header>
         <h1>aniimax</h1>
         <div class="header-buttons">
+            <button class="toggle-button" id="bilingualToggle" title="Alternar nombres bilingües Español / Inglés">🌐 Bilingüe (ES/EN)</button>
             <select id="language-switch" class="toggle-button" aria-label="Language"></select>
             <button class="toggle-button" onclick="showFacilities()" id="facilitiesToggle">Instalaciones</button>
             <button class="toggle-button" onclick="showMath()" id="mathToggle">Matemáticas</button>
@@ -139,6 +140,7 @@
                     </div>
                 </div>
 
+
                 <div class="season" id="season-section" hidden>
                     <label class="priority-switch season-switch">
                         <input type="checkbox" role="switch" id="season-on">
@@ -185,6 +187,29 @@
                 <div id="error-message" class="card error-message" style="display: none;"></div>
 
                 <div id="results-content">
+                    <div class="executive-kpi-banner" id="executive-kpi-banner">
+                        <div class="kpi-card">
+                            <span class="kpi-label">🪙 Tasa Neta</span>
+                            <span class="kpi-val" id="kpi-coin-rate">-</span>
+                            <span class="kpi-sub">Monedas del Hogar</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">🚐 Subida de RV</span>
+                            <span class="kpi-val" id="kpi-level-time">-</span>
+                            <span class="kpi-sub" id="kpi-target-rv">Tiempo estimado</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">🐾 Plazas Aniimo</span>
+                            <span class="kpi-val" id="kpi-aniimo-slots">-</span>
+                            <span class="kpi-sub" id="kpi-aniimo-free">0 libres</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">🍲 Comedero</span>
+                            <span class="kpi-val" id="kpi-bowl-days">-</span>
+                            <span class="kpi-sub" id="kpi-bowl-food">Autonomía AFK</span>
+                        </div>
+                    </div>
+
                     <div class="card aniimo-card" id="aniimo-card">
                         <div class="card-head">
                             <button type="button" class="collapse-toggle" id="aniimo-toggle" aria-expanded="false" aria-controls="aniimo-body">
@@ -218,6 +243,35 @@
 
                     <div class="card production-steps" id="aniimo-recommender-card" style="display: none;">
                         <div id="aniimo-recommender-container"></div>
+                    </div>
+
+                    <div class="card production-steps nutrition-card" id="nutrition-card" style="display: none;">
+                        <div class="card-head">
+                            <h2>🍲 Nutrición y Autonomía del Comedero (1.000 raciones)</h2>
+                            <span class="badge-pill" id="nutrition-rate-badge">10 energía/min por Aniimo</span>
+                        </div>
+                        <p class="hint">Calcula la autonomía AFK exacta del comedero según la cuadrilla activa asignada por el optimizador.</p>
+                        <div class="nutrition-grid">
+                            <div class="nutrition-select-col">
+                                <label for="select-food-dish"><b>Plato a cocinar:</b></label>
+                                <select id="select-food-dish" class="form-select"></select>
+                                <p class="hint small" id="food-ingredients-hint" style="margin-top:0.4rem"></p>
+                            </div>
+                            <div class="nutrition-stats-col">
+                                <div class="nutrition-stat-pill">
+                                    <span>Autonomía AFK</span>
+                                    <b id="nutrition-autonomy-days" style="color:var(--accent); font-size:1.3rem">-</b>
+                                </div>
+                                <div class="nutrition-stat-pill">
+                                    <span>Consumo Cuadrilla</span>
+                                    <b id="nutrition-crew-consumption" style="color:var(--accent-cyan)">-</b>
+                                </div>
+                                <div class="nutrition-stat-pill">
+                                    <span>Energía del Plato</span>
+                                    <b id="nutrition-dish-energy" style="color:var(--accent-gold)">-</b>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="card rate-card">

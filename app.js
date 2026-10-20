@@ -11,6 +11,8 @@ import {
 import { allocateTurnFacilities, redistributeTurnFacilityRows } from './turn-jobs.js';
 import { createShareUrl, readShareHash, urlWithoutShare } from './share-config.js';
 import { recommendAniimos, renderRecommenderUI } from './aniimo-recommender.js';
+import { initExtraFeatures, updateExecutiveKPI, updateFoodAutonomy } from './extra-features.js';
+import { setBilingual, isBilingual } from './i18n.js';
 
 let recommenderAllowPrismana = true;
 
@@ -3200,6 +3202,9 @@ function renderAniimoSummary(plan) {
                     recommenderAllowPrismana = newAllowPrismana;
                     renderAniimoSummary(plan);
                 }, recommenderAllowPrismana);
+                updateExecutiveKPI(plan, recData.totalAssigned, recData.maxSlots);
+                const nutritionCard = document.getElementById('nutrition-card');
+                if (nutritionCard) nutritionCard.style.display = 'block';
             } else {
                 recommenderCard.style.display = 'none';
             }
@@ -3824,6 +3829,7 @@ function displayPlan(plan) {
     renderProfitBreakdown(plan);
     renderFacilityPlan(plan);
     renderAniimoSummary(plan);
+    updateExecutiveKPI(plan);
     // The page stays where the player is; the results appear without scrolling to them.
 }
 
@@ -4260,6 +4266,29 @@ async function initApp() {
     showAniimoSetup();
     applyConfigMode();
     initWasm();
+    initExtraFeatures((isBi) => {
+        setBilingual(isBi);
+        if (lastPlan) displayPlan(lastPlan);
+    });
+
+    window.addEventListener('hashchange', async () => {
+        if (!window.location.hash) return;
+        try {
+            const shared = await readShareHash(window.location.hash);
+            if (shared) {
+                const migrated = migrateSavedConfig(shared);
+                initFacilityTiers(migrated);
+                loadInputsFromStorage(migrated);
+                renderFacilityCards();
+                renderStrategy();
+                showAniimoSetup();
+                applyConfigMode();
+                runFindPlan();
+            }
+        } catch (e) {
+            console.warn('Could not reload config from hash:', e);
+        }
+    });
 
     document.getElementById('optimize-btn').addEventListener('click', runFindPlan);
     document.getElementById('clear-saved-btn').addEventListener('click', clearSavedInputs);

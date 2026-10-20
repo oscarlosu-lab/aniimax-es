@@ -9,91 +9,132 @@
 }
 
 :root {
-    --bg: #0e1013;
-    --surface: #16191e;
-    --surface-2: #1e2229;
-    --text: #e9eaec;
-    --text-muted: #9aa0a8;
-    --border: #2a2f37;
-    --accent: #6cc5a4;
-    --on-accent: #0e1013;
-    --success: #6cc5a4;
-    --error: #ef6b68;
-    --warning: #f0b35a;
-    --radius: 12px;
-    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --font-mono: "Courier New", Courier, monospace;
+    --bg: #090b14;
+    --surface: #111528;
+    --surface-2: #181d36;
+    --surface-3: #22294c;
+    --surface-glass: rgba(18, 22, 42, 0.85);
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-glow: rgba(16, 217, 143, 0.3);
+    --accent: #10d98f;
+    --accent-glow: rgba(16, 217, 143, 0.35);
+    --accent-cyan: #06b6d4;
+    --accent-purple: #a855f7;
+    --accent-gold: #f59e0b;
+    --accent-rose: #f43f5e;
+    --on-accent: #04241a;
+    --success: #10d98f;
+    --error: #f43f5e;
+    --warning: #f59e0b;
+    --radius: 14px;
+    --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Outfit", "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", "Courier New", monospace;
 }
 
 .light {
-    --bg: #f5f4ef;
+    --bg: #f8fafc;
     --surface: #ffffff;
-    --surface-2: #f0eee8;
-    --text: #1d1f22;
-    --text-muted: #666a70;
-    --border: #e2dfd7;
-    --accent: #2e7d65;
+    --surface-2: #f1f5f9;
+    --surface-3: #e2e8f0;
+    --surface-glass: rgba(255, 255, 255, 0.9);
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --border-glow: rgba(16, 185, 129, 0.3);
+    --accent: #059669;
+    --accent-glow: rgba(5, 150, 105, 0.25);
+    --accent-cyan: #0284c7;
+    --accent-purple: #9333ea;
+    --accent-gold: #d97706;
+    --accent-rose: #e11d48;
     --on-accent: #ffffff;
-    --success: #2e7d65;
-    --error: #c62828;
-    --warning: #b8660b;
+    --success: #059669;
+    --error: #e11d48;
+    --warning: #d97706;
 }
 
 body {
     accent-color: var(--accent);
     font-family: var(--font-body);
     background-color: var(--bg);
+    background-image: 
+        radial-gradient(circle at 15% 10%, rgba(16, 217, 143, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 40%);
+    background-attachment: fixed;
     color: var(--text);
     line-height: 1.55;
-    max-width: 880px;
-    margin: 2.5rem auto;
-    padding: 0 1rem;
+    max-width: 1320px;
+    margin: 1.5rem auto 3rem;
+    padding: 0 1.5rem;
     transition: background-color 0.3s, color 0.3s;
     font-variant-numeric: tabular-nums;
 }
 
 a {
-    color: inherit;
-    text-decoration: underline;
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
 }
 
 a:hover {
-    color: inherit;
+    color: var(--text);
+    text-decoration: underline;
 }
 
 /* Header */
 header {
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
+    padding: 1.2rem 1.5rem;
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
+    background: var(--surface-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
 }
 
 header h1 {
-    font-family: var(--font-mono);
-    font-size: 2rem;
-    font-weight: normal;
+    font-family: var(--font-body);
+    font-size: 1.85rem;
+    font-weight: 800;
     letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
 .header-buttons {
     display: flex;
-    gap: 1rem;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
 }
 
 .toggle-button {
     cursor: pointer;
-    background: none;
-    border: none;
-    color: inherit;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
     line-height: normal;
-    text-decoration: underline;
+    text-decoration: none;
+    padding: 0.45rem 0.85rem;
+    border-radius: 8px;
+    transition: all 0.2s ease;
 }
 
 .toggle-button:hover {
-    opacity: 0.7;
+    background: var(--surface-3);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+    color: var(--text);
 }
 
 #language-switch option {
@@ -455,23 +496,39 @@ p {
 /* Optimize Button */
 .optimize-btn {
     width: 100%;
-    padding: 0.75rem 1.5rem;
-    background: var(--text);
-    color: var(--bg);
-    border: 1px solid var(--text);
+    padding: 1.1rem 2rem;
+    background: linear-gradient(135deg, #10d98f 0%, #059669 100%);
+    color: #04241a;
+    border: none;
+    border-radius: 12px;
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
     cursor: pointer;
-    transition: opacity 0.2s;
+    box-shadow: 0 8px 24px rgba(16, 217, 143, 0.35);
+    transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
 }
 
 .optimize-btn:hover {
-    opacity: 0.8;
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(16, 217, 143, 0.5);
+    filter: brightness(1.08);
+}
+
+.optimize-btn:active {
+    transform: translateY(0);
 }
 
 .optimize-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 /* Progress bar shown while find_plan runs in the worker (see worker.js); fill width is driven by
@@ -1109,11 +1166,19 @@ footer {
    ======================================== */
 
 .card {
-    background: var(--surface);
+    background: var(--surface-glass);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.25rem 1.5rem 1.5rem;
-    margin-bottom: 1.25rem;
+    padding: 1.5rem 1.75rem 1.75rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.card:hover {
+    border-color: rgba(255, 255, 255, 0.14);
 }
 
 .card h2 {
@@ -3128,5 +3193,291 @@ tr:hover .skip-row,
 .recommender-subtask strong {
     color: #4ade80;
 }
+
+/* ========================================
+   Executive KPI Banner
+   ======================================== */
+.executive-kpi-banner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+    background: linear-gradient(135deg, rgba(24, 29, 54, 0.9) 0%, rgba(17, 21, 40, 0.95) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(16, 217, 143, 0.35);
+}
+
+.kpi-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.kpi-val {
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}
+
+.kpi-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* ========================================
+   Daily Orders Section (Tienda del Robot)
+   ======================================== */
+.daily-orders-card {
+    background: var(--surface-glass);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.daily-orders-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.85rem;
+    margin-top: 1rem;
+    margin-bottom: 1.2rem;
+}
+
+.daily-order-item {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.daily-order-item:hover {
+    background: var(--surface-3);
+    border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(-1px);
+}
+
+.daily-order-item.selected {
+    border-color: var(--accent);
+    background: rgba(16, 217, 143, 0.08);
+    box-shadow: 0 0 16px rgba(16, 217, 143, 0.15);
+}
+
+.order-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.6rem;
+}
+
+.order-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+.order-item-icon {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    object-fit: contain;
+    border-radius: 9px;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.08) 0%, rgba(10, 14, 25, 0.8) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 3px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+}
+
+.daily-order-item:hover .order-item-icon {
+    transform: scale(1.1) rotate(2deg);
+    border-color: var(--accent);
+}
+
+.daily-order-item.selected .order-item-icon {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(16, 217, 143, 0.35);
+}
+
+.order-title-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.order-name {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.25;
+}
+
+.order-en-sub {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--accent-cyan);
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+.order-reqs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 0.35rem 0.6rem;
+    border-radius: 6px;
+}
+
+.order-qty-pill {
+    background: rgba(16, 217, 143, 0.15);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.order-mats-desc {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.order-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 0.4rem;
+}
+
+.order-reward {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--accent-gold);
+    font-family: var(--font-mono);
+}
+
+.daily-orders-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+/* ========================================
+   Nutrition & Food Bowl Calculator
+   ======================================== */
+.nutrition-card {
+    margin-bottom: 1.5rem;
+}
+
+.nutrition-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+    .nutrition-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.nutrition-select-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.nutrition-select-col select {
+    padding: 0.65rem 0.85rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-family: inherit;
+}
+
+.nutrition-stats-col {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.nutrition-stat-pill {
+    flex: 1;
+    min-width: 140px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.nutrition-stat-pill span {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* Generic Badge Pill */
+.badge-pill {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.badge-pill.category {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--accent-cyan);
+    border-color: rgba(6, 182, 212, 0.35);
+}
+
 
 
