@@ -660,6 +660,9 @@ function attachModeHandlers() {
     document.getElementById('home-level').addEventListener('change', () => {
         renderSimpleSummary();
         renderStrategy();
+        if (typeof window.refreshContractsUI === 'function') {
+            window.refreshContractsUI();
+        }
     });
     document.getElementById('fill-btn').addEventListener('click', () => {
         fillAdvancedFrom(numberOrDefault(document.getElementById('fill-level').value, MAX_HOME_LEVEL));
@@ -4329,20 +4332,23 @@ async function initApp() {
         if (lastPlan) displayPlan(lastPlan);
     });
 
-    const contractsConfigEl = document.getElementById('contracts-config-container');
-    if (contractsConfigEl) {
-        renderContractsConfigUI(
-            contractsConfigEl,
-            (updatedContracts) => {
-                if (lastPlan) {
-                    renderContractsResultCard(document.getElementById('contracts-results-card'), lastPlan, updatedContracts);
+    window.refreshContractsUI = function() {
+        const contractsConfigEl = document.getElementById('contracts-config-container');
+        if (contractsConfigEl) {
+            renderContractsConfigUI(
+                contractsConfigEl,
+                (updatedContracts) => {
+                    if (lastPlan) {
+                        renderContractsResultCard(document.getElementById('contracts-results-card'), lastPlan, updatedContracts);
+                    }
+                },
+                (contractsToOptimize) => {
+                    applyContractsOptimization(contractsToOptimize);
                 }
-            },
-            (contractsToOptimize) => {
-                applyContractsOptimization(contractsToOptimize);
-            }
-        );
-    }
+            );
+        }
+    };
+    window.refreshContractsUI();
 
     window.addEventListener('hashchange', async () => {
         if (!window.location.hash) return;
@@ -4526,7 +4532,11 @@ function applyContractsOptimization(contractsToOptimize) {
     if (!contractsToOptimize || contractsToOptimize.length === 0) return;
 
     // 1. Desbloquear/des-omitir cualquier receta requerida por los contratos si estaba en skippedRecipes
-    const allItems = contractsToOptimize.flatMap(c => (c.items || []).map(it => it.item));
+    const allItems = contractsToOptimize.flatMap(c => {
+        if (c.items && c.items.length) return c.items.map(it => it.item);
+        if (c.itemKey) return [c.itemKey];
+        return [];
+    });
     let changedSkipped = false;
     allItems.forEach(item => {
         if (skippedRecipes && skippedRecipes.has(item)) {
@@ -4539,7 +4549,7 @@ function applyContractsOptimization(contractsToOptimize) {
     }
 
     // 2. Si hay contratos de temporada, asegurar que el modo de temporada esté activado
-    const hasSeason = contractsToOptimize.some(c => c.type === 'season');
+    const hasSeason = contractsToOptimize.some(c => c.type === 'season' || c.isSeason);
     if (hasSeason) {
         const seasonCheckbox = document.getElementById('season-on');
         if (seasonCheckbox && !seasonCheckbox.checked) {

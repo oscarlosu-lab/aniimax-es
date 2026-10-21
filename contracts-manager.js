@@ -1,125 +1,41 @@
 /**
  * contracts-manager.js
- * Módulo de Gestión y Optimización de Contratos Diarios, Urgentes y de Evento para Aniimax.
- * Basado en la ingeniería inversa del sistema HomeOrder de Aniimo (NetEase).
+ * Módulo de Gestión y Optimización de Pedidos Diarios de la Tierra Natal (Home Orders)
+ * Basado en la base de datos oficial de los 327 pedidos y los 8 clientes de Astra.
  */
 
 import { translate } from './i18n.js';
+import {
+    ORDER_CLIENTS,
+    HOME_ORDERS_LIB,
+    RV_BOARD_CAPACITY,
+    QUALITY_TIERS
+} from './home-orders-data.js';
 
-// Catálogo de Contratos Predefinidos (Extraídos del Datamine Oficial de HomeOrder)
-export const PRESET_CONTRACTS = [
-    {
-        id: 'astra_bakery',
-        name: 'Comerciantes de Astra: Pan y Harina',
-        type: 'urgent',
-        badge: '🔥 Urgente x2.0',
-        multiple: 2.0,
-        rewardCoins: 65000,
-        rewardExp: 4200,
-        items: [
-            { item: 'premium_bread', amount: 30, stock: 0 },
-            { item: 'wheatmeal', amount: 50, stock: 0 },
-            { item: 'quick_wheat', amount: 80, stock: 0 }
-        ]
-    },
-    {
-        id: 'gogohomes_construction',
-        name: 'Fannie GoGoHomes: Componentes de Caravana',
-        type: 'urgent',
-        badge: '🔥 Urgente x3.0',
-        multiple: 3.0,
-        rewardCoins: 85000,
-        rewardExp: 5000,
-        items: [
-            { item: 'wood_block', amount: 100, stock: 0 },
-            { item: 'rough_lumber', amount: 40, stock: 0 },
-            { item: 'mineral_sand', amount: 80, stock: 0 }
-        ]
-    },
-    {
-        id: 'perfume_alchemy',
-        name: 'Alquimia de Floralia: Perfumes Prémium',
-        type: 'urgent',
-        badge: '🔥 Urgente x2.5',
-        multiple: 2.5,
-        rewardCoins: 72000,
-        rewardExp: 4800,
-        items: [
-            { item: 'premium_mixed_perfume', amount: 25, stock: 0 },
-            { item: 'advanced_lemon_incense', amount: 40, stock: 0 }
-        ]
-    },
-    {
-        id: 'fentuft_textiles',
-        name: 'Demanda Textil de Fentuft',
-        type: 'urgent',
-        badge: '🔥 Urgente x2.0',
-        multiple: 2.0,
-        rewardCoins: 54000,
-        rewardExp: 3600,
-        items: [
-            { item: 'quick_wool', amount: 75, stock: 0 },
-            { item: 'quick_aromathyst', amount: 50, stock: 0 }
-        ]
-    },
-    {
-        id: 'oasis_banquet',
-        name: 'Festín del Oasis: Sirope y Patatas',
-        type: 'urgent',
-        badge: '🔥 Urgente x2.2',
-        multiple: 2.2,
-        rewardCoins: 60000,
-        rewardExp: 4000,
-        items: [
-            { item: 'quick_maple_syrup', amount: 60, stock: 0 },
-            { item: 'quick_potato', amount: 90, stock: 0 }
-        ]
-    },
-    {
-        id: 'season_flower_sea',
-        name: 'Pase de Temporada: Mar de Flores',
-        type: 'season',
-        badge: '🌸 Evento / Pase',
-        multiple: 1.5,
-        rewardCoins: 30000,
-        rewardSeasonStamps: 450,
-        items: [
-            { item: 'lavender_powder', amount: 40, stock: 0 },
-            { item: 'quick_fresh_water', amount: 80, stock: 0 }
-        ]
-    },
-    {
-        id: 'season_summer_harvest',
-        name: 'Pase del Hogar: Cosecha Estival',
-        type: 'season',
-        badge: '🌸 Evento / Pase',
-        multiple: 1.5,
-        rewardCoins: 35000,
-        rewardSeasonStamps: 600,
-        items: [
-            { item: 'quick_rice', amount: 100, stock: 0 },
-            { item: 'quick_coconut', amount: 50, stock: 0 }
-        ]
-    },
-    {
-        id: 'season_delight_pudding',
-        name: 'Gran Festín: Pudin de Fresa Prémium',
-        type: 'season',
-        badge: '🌸 Evento / Pase',
-        multiple: 1.8,
-        rewardCoins: 45000,
-        rewardSeasonStamps: 750,
-        items: [
-            { item: 'premium_berry_chocolate_coconut_pudding', amount: 25, stock: 0 },
-            { item: 'quick_deep_rock_spring_water', amount: 60, stock: 0 }
-        ]
-    }
-];
-
-const STORAGE_KEY = 'aniimax_active_contracts';
+const STORAGE_KEY = 'aniimax_active_orders_v2';
+const SELECTED_CLIENT_KEY = 'aniimax_selected_client';
 
 /**
- * Carga los contratos activos guardados en LocalStorage.
+ * Obtiene el nivel actual de la Casa Rodante seleccionado en Aniimax.
+ */
+export function getCurrentHomeLevel() {
+    const el = document.getElementById('home-level');
+    if (el && el.value) {
+        return parseInt(el.value, 10) || 1;
+    }
+    return 4; // RV 4 por defecto
+}
+
+/**
+ * Obtiene la capacidad máxima del tablón para el nivel de RV actual.
+ */
+export function getMaxBoardCapacity(rvLevel = getCurrentHomeLevel()) {
+    const lvl = Math.min(20, Math.max(1, rvLevel));
+    return RV_BOARD_CAPACITY[lvl] || 7;
+}
+
+/**
+ * Carga los pedidos activos del jugador desde LocalStorage.
  */
 export function getActiveContracts() {
     try {
@@ -129,57 +45,44 @@ export function getActiveContracts() {
             if (Array.isArray(parsed)) return parsed;
         }
     } catch (e) {
-        console.warn('Error al cargar contratos de localStorage:', e);
+        console.warn('Error al cargar pedidos activos de localStorage:', e);
     }
-    // Por defecto, iniciamos con 2 contratos sugeridos (1 urgente y 1 de temporada)
+
+    // Por defecto inicializamos con 2 pedidos representativos del cliente 1 y 2
+    const defaultOrder1 = HOME_ORDERS_LIB.find(o => o.id === '3') || HOME_ORDERS_LIB[0]; // Harina de trigo
+    const defaultOrder2 = HOME_ORDERS_LIB.find(o => o.id === '1') || HOME_ORDERS_LIB[1]; // Trigo
+
     return [
-        JSON.parse(JSON.stringify(PRESET_CONTRACTS[0])),
-        JSON.parse(JSON.stringify(PRESET_CONTRACTS[5]))
+        {
+            ...defaultOrder1,
+            items: [{ item: defaultOrder1.itemKey, amount: defaultOrder1.amount, name: defaultOrder1.name }],
+            type: defaultOrder1.isSeason ? 'season' : 'daily',
+            multiplier: 2.0,
+            badge: '🔥 Urgente x2.0',
+            stock: 0,
+            clientMeta: ORDER_CLIENTS.find(c => c.id === defaultOrder1.clientId)
+        },
+        {
+            ...defaultOrder2,
+            items: [{ item: defaultOrder2.itemKey, amount: defaultOrder2.amount, name: defaultOrder2.name }],
+            type: defaultOrder2.isSeason ? 'season' : 'daily',
+            multiplier: 1.0,
+            badge: 'Normal x1.0',
+            stock: 0,
+            clientMeta: ORDER_CLIENTS.find(c => c.id === defaultOrder2.clientId)
+        }
     ];
 }
 
 /**
- * Guarda los contratos activos en LocalStorage.
+ * Guarda los pedidos activos en LocalStorage.
  */
-export function saveActiveContracts(contracts) {
+export function saveActiveContracts(orders) {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(contracts));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
     } catch (e) {
-        console.warn('Error al guardar contratos en localStorage:', e);
+        console.warn('Error al guardar pedidos activos:', e);
     }
-}
-
-/**
- * Formatea un nombre de ítem snake_case a título legible.
- */
-export function formatItemTitle(name) {
-    if (!name) return '';
-    const map = {
-        'coins': 'Monedas del Hogar',
-        'wood_block': 'Bloques de Madera',
-        'rough_lumber': 'Madera en Bruto',
-        'mineral_sand': 'Arena Mineral',
-        'wheatmeal': 'Harina de Trigo',
-        'premium_bread': 'Pan Prémium',
-        'quick_wheat': 'Trigo Rápido',
-        'quick_potato': 'Patata Rápida',
-        'quick_rice': 'Arroz Rápido',
-        'quick_coconut': 'Coco Rápido',
-        'quick_wool': 'Lana Rápida',
-        'quick_aromathyst': 'Aromatista Rápida',
-        'quick_maple_syrup': 'Sirope de Arce Rápido',
-        'quick_fresh_water': 'Agua Dulce Rápida',
-        'quick_deep_rock_spring_water': 'Agua de Roca Profunda Rápida',
-        'lavender_powder': 'Polvo de Lavanda',
-        'premium_mixed_perfume': 'Perfume Mixto Prémium',
-        'advanced_lemon_incense': 'Incienso de Limón Avanzado',
-        'premium_berry_chocolate_coconut_pudding': 'Pudin de Fresa Prémium',
-        'apple_tart': 'Tarta de Manzana',
-        'candied_strawberries': 'Fresas Confitadas'
-    };
-    if (map[name]) return translate(map[name]);
-    const formatted = name.split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
-    return translate(formatted);
 }
 
 /**
@@ -197,46 +100,56 @@ function formatHoursMins(seconds) {
 }
 
 /**
- * Calcula el progreso, tasa de producción, tiempo restante y ganancias de los contratos activos
- * a partir de un plan de producción de Aniimax.
+ * Calcula el análisis de cumplimiento de pedidos a partir de un plan de producción.
  */
-export function calculateContractsAnalysis(plan, contracts = getActiveContracts()) {
-    if (!contracts || contracts.length === 0) {
+export function calculateContractsAnalysis(plan, activeOrders = getActiveContracts()) {
+    if (!activeOrders || activeOrders.length === 0) {
         return {
             contracts: [],
             totalCoins: 0,
             totalSeasonStamps: 0,
             maxCompletionHours: 0,
-            allDone: false,
+            maxCompletionSeconds: 0,
+            maxCompletionEtaFormatted: '0m',
+            allDone: true,
             contractItems: new Set(),
             contractFacilities: new Set()
         };
     }
 
-    // Mapear tasas de producción de cada ítem en el plan (unidades/segundo)
-    const productionRates = new Map(); // item_name -> units_per_second
-    const itemFacilities = new Map();  // item_name -> facility_name
+    function norm(k) {
+        return (k || '').toString().toLowerCase().replace(/[\s_\-]+/g, '');
+    }
+
+    // Mapear tasas de producción del plan (unidades/segundo)
+    const productionRates = new Map();
+    const itemFacilities = new Map();
+
+    function addRate(name, rate, fac) {
+        if (!name) return;
+        const nKey = norm(name);
+        const curr = productionRates.get(nKey) || 0;
+        if (rate > curr) {
+            productionRates.set(nKey, rate);
+        }
+        if (fac && !itemFacilities.has(nKey)) {
+            itemFacilities.set(nKey, fac);
+        }
+    }
 
     // 1. Productos finales vendidos
     if (plan && plan.income_streams) {
         plan.income_streams.forEach(stream => {
-            const current = productionRates.get(stream.item_name) || 0;
-            productionRates.set(stream.item_name, current + (stream.units_per_second || 0));
-            if (stream.facility) itemFacilities.set(stream.item_name, stream.facility);
+            addRate(stream.item_name, stream.units_per_second || 0, stream.facility);
         });
     }
 
-    // 2. Pasos de instalaciones (incluye productos intermedios y cosechas)
+    // 2. Pasos de producción en instalaciones (incluye productos intermedios y materias primas)
     if (plan && plan.coin_items) {
         plan.coin_items.forEach(step => {
             if (step.item_name && step.cycle_time && step.cycle_time > 0 && step.facility_count > 0) {
-                // Tasa = cantidad_instalaciones / cycle_time
                 const rate = step.facility_count / step.cycle_time;
-                const current = productionRates.get(step.item_name) || 0;
-                if (rate > current) {
-                    productionRates.set(step.item_name, rate);
-                }
-                if (step.facility) itemFacilities.set(step.item_name, step.facility);
+                addRate(step.item_name, rate, step.facility);
             }
         });
     }
@@ -247,310 +160,403 @@ export function calculateContractsAnalysis(plan, contracts = getActiveContracts(
     const allContractItems = new Set();
     const allContractFacilities = new Set();
 
-    const evaluatedContracts = contracts.map(contract => {
-        const mult = contract.multiple || 1.0;
-        const rewardCoinsEffective = Math.round((contract.rewardCoins || 0) * (contract.type === 'urgent' ? mult : 1.0));
-        const rewardSeasonStamps = contract.rewardSeasonStamps || 0;
+    const evaluatedOrders = activeOrders.map(order => {
+        const mult = order.multiplier || 1.0;
+        const rewardCoinsEffective = Math.round((order.coins || 0) * mult);
+        const rewardSeasonStamps = order.stamps || 0;
 
         totalCoins += rewardCoinsEffective;
         totalSeasonStamps += rewardSeasonStamps;
 
-        let contractMaxSeconds = 0;
-        let contractAllDone = true;
-        let bottleneckItem = null;
+        const itemKey = order.itemKey || '';
+        allContractItems.add(itemKey);
 
-        const evaluatedItems = (contract.items || []).map(entry => {
-            allContractItems.add(entry.item);
-            const fac = itemFacilities.get(entry.item) || 'Instalación correspondiente';
-            allContractFacilities.add(fac);
+        const facility = itemFacilities.get(norm(order.itemKey)) ||
+                         itemFacilities.get(norm(order.nameEn)) ||
+                         itemFacilities.get(norm(order.name)) ||
+                         'Instalación correspondiente';
+        allContractFacilities.add(facility);
 
-            const required = entry.amount || 0;
-            const stock = entry.stock || 0;
-            const pending = Math.max(0, required - stock);
-            const unitsPerSec = productionRates.get(entry.item) || 0;
-            const unitsPerHour = unitsPerSec * 3600;
+        const required = order.amount || 0;
+        const stock = order.stock || 0;
+        const pending = Math.max(0, required - stock);
 
-            let secondsNeeded = 0;
-            let status = 'done'; // done, in_progress, no_production
+        // Buscar tasa por itemKey, nameEn o name normalizados
+        let unitsPerSec = productionRates.get(norm(order.itemKey)) ||
+                          productionRates.get(norm(order.nameEn)) ||
+                          productionRates.get(norm(order.name)) || 0;
+        const unitsPerHour = unitsPerSec * 3600;
 
-            if (pending <= 0) {
-                status = 'done';
-                secondsNeeded = 0;
-            } else if (unitsPerSec > 0) {
-                status = 'in_progress';
-                secondsNeeded = pending / unitsPerSec;
-                contractAllDone = false;
-            } else {
-                status = 'no_production';
-                secondsNeeded = Infinity;
-                contractAllDone = false;
-            }
+        let secondsNeeded = 0;
+        let status = 'done'; // done, in_progress, no_production
 
-            if (secondsNeeded > contractMaxSeconds) {
-                contractMaxSeconds = secondsNeeded;
-                bottleneckItem = entry.item;
-            }
-
-            return {
-                item: entry.item,
-                name: formatItemTitle(entry.item),
-                facility: fac,
-                required,
-                stock,
-                pending,
-                unitsPerHour,
-                status,
-                secondsNeeded,
-                etaText: status === 'done' ? '✅ En almacén' : status === 'in_progress' ? formatHoursMins(secondsNeeded) : '⚠️ Sin producción activa'
-            };
-        });
-
-        if (contractMaxSeconds > maxCompletionSeconds) {
-            maxCompletionSeconds = contractMaxSeconds;
+        if (pending <= 0) {
+            status = 'done';
+            secondsNeeded = 0;
+        } else if (unitsPerSec > 0) {
+            status = 'in_progress';
+            secondsNeeded = pending / unitsPerSec;
+        } else {
+            status = 'no_production';
+            secondsNeeded = Infinity;
         }
 
+        if (secondsNeeded > maxCompletionSeconds) {
+            maxCompletionSeconds = secondsNeeded;
+        }
+
+        const isDone = status === 'done';
+        const etaText = isDone ? '✅ Listo para entregar' : status === 'in_progress' ? formatHoursMins(secondsNeeded) : '⚠️ Sin producción activa';
+
         return {
-            ...contract,
+            ...order,
             rewardCoinsEffective,
             rewardSeasonStamps,
-            items: evaluatedItems,
-            contractMaxSeconds,
-            contractAllDone,
-            bottleneckItem,
-            etaFormatted: contractAllDone ? '¡Listo para entregar!' : Number.isFinite(contractMaxSeconds) ? formatHoursMins(contractMaxSeconds) : 'Requiere instalaciones'
+            facility,
+            required,
+            stock,
+            pending,
+            unitsPerHour,
+            status,
+            secondsNeeded,
+            contractAllDone: isDone,
+            etaFormatted: etaText
         };
     });
 
     return {
-        contracts: evaluatedContracts,
+        contracts: evaluatedOrders,
         totalCoins,
         totalSeasonStamps,
         maxCompletionHours: maxCompletionSeconds / 3600,
         maxCompletionSeconds,
         maxCompletionEtaFormatted: formatHoursMins(maxCompletionSeconds),
-        allDone: evaluatedContracts.every(c => c.contractAllDone),
+        allDone: evaluatedOrders.every(o => o.contractAllDone),
         contractItems: allContractItems,
         contractFacilities: allContractFacilities
     };
 }
 
 /**
- * Renderiza el panel de configuración de contratos en la barra izquierda.
+ * Renderiza el panel de gestión de pedidos en la barra de configuración.
  */
 export function renderContractsConfigUI(container, onContractsChanged, onOptimizeForContracts) {
     if (!container) return;
-    const contracts = getActiveContracts();
 
-    container.innerHTML = `
-        <div class="contracts-header">
-            <div class="contracts-title-wrap">
-                <span class="contracts-icon">📜</span>
-                <div>
-                    <h4 class="contracts-title">Contratos del Hogar (Urgentes y Evento)</h4>
-                    <p class="hint small">Registra tus pedidos activos de la Tierra Natal para que el planificador los calcule y optimice tu base.</p>
-                </div>
-            </div>
-        </div>
+    let selectedClientId = localStorage.getItem(SELECTED_CLIENT_KEY) || '1';
+    let searchQuery = '';
+    let filterByRv = true;
+    let selectedMultiplier = 2.0; // Urgente por defecto
 
-        <div class="contracts-presets-section">
-            <span class="preset-label">Añadir pedidos del datamine:</span>
-            <div class="preset-chips-wrap" id="preset-chips-container"></div>
-        </div>
+    function update() {
+        const activeOrders = getActiveContracts();
+        const currentRv = getCurrentHomeLevel();
+        const maxCapacity = getMaxBoardCapacity(currentRv);
+        const isFull = activeOrders.length >= maxCapacity;
 
-        <div class="active-contracts-list" id="active-contracts-list"></div>
-
-        <div class="custom-contract-adder">
-            <details class="explain custom-contract-details">
-                <summary>➕ Crear Pedido Personalizado</summary>
-                <div class="custom-contract-form">
-                    <div class="input-row">
-                        <div class="input-field" style="flex: 2;">
-                            <label for="custom-c-name">Nombre del encargo</label>
-                            <input type="text" id="custom-c-name" placeholder="Ej. Pedido Urgente Especial" value="Pedido Urgente de Astra">
-                        </div>
-                        <div class="input-field" style="flex: 1;">
-                            <label for="custom-c-type">Tipo</label>
-                            <select id="custom-c-type">
-                                <option value="urgent">🔥 Urgente (x2.5)</option>
-                                <option value="season">🌸 Evento / Pase</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="input-row">
-                        <div class="input-field" style="flex: 2;">
-                            <label for="custom-c-item">Producto requerido</label>
-                            <select id="custom-c-item"></select>
-                        </div>
-                        <div class="input-field" style="flex: 1;">
-                            <label for="custom-c-amount">Cantidad</label>
-                            <input type="number" id="custom-c-amount" min="1" max="1000" value="50">
-                        </div>
-                        <div class="input-field" style="flex: 1;">
-                            <label for="custom-c-stock">Stock actual</label>
-                            <input type="number" id="custom-c-stock" min="0" max="1000" value="0">
-                        </div>
-                    </div>
-                    <button type="button" id="btn-add-custom-contract" class="skip-add-btn" style="margin-top: 0.5rem; width: 100%;">
-                        ➕ Añadir este encargo a la lista
-                    </button>
-                </div>
-            </details>
-        </div>
-
-        <div class="contracts-actions-bar">
-            <button type="button" id="btn-optimize-contracts" class="optimize-btn contracts-btn">
-                <span class="btn-text">🎯 Optimizar Plan para estos Contratos</span>
-            </button>
-        </div>
-    `;
-
-    // 1. Renderizar chips de presets
-    const chipsContainer = container.querySelector('#preset-chips-container');
-    PRESET_CONTRACTS.forEach(preset => {
-        const isAdded = contracts.some(c => c.id === preset.id);
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = `contract-preset-chip ${isAdded ? 'active' : ''}`;
-        btn.innerHTML = `${preset.badge.split(' ')[0]} ${preset.name}`;
-        btn.title = `${preset.badge} - ${preset.items.map(i => `${formatItemTitle(i.item)} x${i.amount}`).join(', ')}`;
-        btn.addEventListener('click', () => {
-            const current = getActiveContracts();
-            const existsIndex = current.findIndex(c => c.id === preset.id);
-            if (existsIndex >= 0) {
-                current.splice(existsIndex, 1);
-            } else {
-                current.push(JSON.parse(JSON.stringify(preset)));
+        // Si el cliente seleccionado requiere un nivel de RV superior al actual, auto-seleccionar el primer cliente disponible
+        if (filterByRv) {
+            const currentSelectedMeta = ORDER_CLIENTS.find(c => c.id === selectedClientId);
+            if (currentSelectedMeta && (currentSelectedMeta.minRv || 1) > currentRv) {
+                const firstAvailable = ORDER_CLIENTS.find(c => (c.minRv || 1) <= currentRv);
+                if (firstAvailable) {
+                    selectedClientId = firstAvailable.id;
+                }
             }
-            saveActiveContracts(current);
-            renderContractsConfigUI(container, onContractsChanged, onOptimizeForContracts);
-            if (onContractsChanged) onContractsChanged(current);
-        });
-        chipsContainer.appendChild(btn);
-    });
+        }
 
-    // 2. Poblar selector de ítems para contrato personalizado
-    const itemSelect = container.querySelector('#custom-c-item');
-    const availableItems = [
-        'wheatmeal', 'premium_bread', 'quick_wheat', 'wood_block', 'rough_lumber',
-        'mineral_sand', 'premium_mixed_perfume', 'advanced_lemon_incense', 'quick_wool',
-        'quick_aromathyst', 'quick_maple_syrup', 'quick_potato', 'quick_rice',
-        'quick_coconut', 'lavender_powder', 'premium_berry_chocolate_coconut_pudding',
-        'apple_tart', 'candied_strawberries', 'quick_fresh_water', 'quick_deep_rock_spring_water'
-    ];
-    availableItems.sort((a, b) => formatItemTitle(a).localeCompare(formatItemTitle(b))).forEach(itemKey => {
-        const opt = document.createElement('option');
-        opt.value = itemKey;
-        opt.textContent = formatItemTitle(itemKey);
-        itemSelect.appendChild(opt);
-    });
+        // Filtrar pedidos del cliente seleccionado
+        let clientOrders = HOME_ORDERS_LIB.filter(o => o.clientId === selectedClientId);
 
-    // 3. Listener añadir contrato personalizado
-    const btnAddCustom = container.querySelector('#btn-add-custom-contract');
-    btnAddCustom.addEventListener('click', () => {
-        const name = container.querySelector('#custom-c-name').value.trim() || 'Encargo Personalizado';
-        const type = container.querySelector('#custom-c-type').value;
-        const item = container.querySelector('#custom-c-item').value;
-        const amount = Math.max(1, parseInt(container.querySelector('#custom-c-amount').value, 10) || 50);
-        const stock = Math.max(0, parseInt(container.querySelector('#custom-c-stock').value, 10) || 0);
+        if (filterByRv) {
+            clientOrders = clientOrders.filter(o => o.minRv <= currentRv && (!o.maxRv || o.maxRv >= currentRv));
+        }
 
-        const newContract = {
-            id: 'custom_' + Date.now(),
-            name,
-            type,
-            badge: type === 'urgent' ? '🔥 Urgente x2.5' : '🌸 Evento / Pase',
-            multiple: type === 'urgent' ? 2.5 : 1.5,
-            rewardCoins: type === 'urgent' ? amount * 900 : amount * 500,
-            rewardSeasonStamps: type === 'season' ? Math.round(amount * 8) : 0,
-            items: [{ item, amount, stock }]
-        };
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            clientOrders = clientOrders.filter(o =>
+                o.name.toLowerCase().includes(q) ||
+                (o.nameEn && o.nameEn.toLowerCase().includes(q))
+            );
+        }
 
-        const current = getActiveContracts();
-        current.push(newContract);
-        saveActiveContracts(current);
-        renderContractsConfigUI(container, onContractsChanged, onOptimizeForContracts);
-        if (onContractsChanged) onContractsChanged(current);
-    });
+        const selectedClient = ORDER_CLIENTS.find(c => c.id === selectedClientId) || ORDER_CLIENTS[0];
 
-    // 4. Renderizar lista de contratos activos
-    const listEl = container.querySelector('#active-contracts-list');
-    if (contracts.length === 0) {
-        listEl.innerHTML = `<p class="hint small" style="text-align: center; padding: 0.75rem;">No tienes contratos seleccionados. Elige uno arriba o añade uno personalizado.</p>`;
-    } else {
-        listEl.innerHTML = contracts.map((c, idx) => `
-            <div class="contract-active-card ${c.type}">
-                <div class="contract-card-top">
-                    <span class="contract-badge ${c.type}">${c.badge}</span>
-                    <strong class="contract-name">${c.name}</strong>
-                    <button type="button" class="btn-remove-contract" data-index="${idx}" title="Eliminar contrato">✕</button>
-                </div>
-                <div class="contract-items-table">
-                    ${c.items.map((it, itIdx) => `
-                        <div class="contract-item-row">
-                            <span class="c-item-name">${formatItemTitle(it.item)}:</span>
-                            <span class="c-item-req"><b>${it.amount}</b> requeridos</span>
-                            <div class="c-stock-wrap">
-                                <label>Tengo en almacén:</label>
-                                <input type="number" class="c-stock-input" data-cindex="${idx}" data-iindex="${itIdx}" min="0" max="${it.amount}" value="${it.stock || 0}">
-                            </div>
-                        </div>
-                    `).join('')}
+        container.innerHTML = `
+            <div class="contracts-header">
+                <div class="contracts-title-wrap">
+                    <span class="contracts-icon">📜</span>
+                    <div>
+                        <h4 class="contracts-title">Pedidos del Hogar (Robot de Pedidos)</h4>
+                        <span class="contracts-capacity-badge ${isFull ? 'full' : ''}">
+                            Tablón: <b>${activeOrders.length} / ${maxCapacity}</b> pedidos (RV ${currentRv})
+                        </span>
+                    </div>
                 </div>
             </div>
-        `).join('');
 
-        // Listeners para eliminar contrato
-        listEl.querySelectorAll('.btn-remove-contract').forEach(btn => {
+            <!-- Fila de Pills de los 8 Clientes -->
+            <div class="client-pills-bar">
+                <span class="pills-label">Clientes de Astra:</span>
+                <div class="client-pills-wrapper">
+                    ${ORDER_CLIENTS.map(c => {
+                        const isLocked = filterByRv && (c.minRv || 1) > currentRv;
+                        return `
+                        <button type="button" class="client-pill ${c.id === selectedClientId ? 'active' : ''} ${isLocked ? 'locked' : ''}" data-client-id="${c.id}" ${isLocked ? 'disabled' : ''} title="${c.category}: ${c.description}${isLocked ? ` · Requiere Casa Rodante RV ${c.minRv}` : ''}">
+                            <span class="client-pill-emoji">${c.emoji}</span>
+                            <span class="client-pill-name">${c.name}</span>
+                            ${isLocked ? `<span class="client-pill-lock">🔒RV${c.minRv}</span>` : ''}
+                        </button>
+                    `;}).join('')}
+                </div>
+            </div>
+
+            <!-- Selector Contextual del Pedido -->
+            <div class="order-selector-box">
+                <div class="order-selector-header">
+                    <span class="selected-client-info">
+                        ${selectedClient.emoji} <strong>${selectedClient.name}</strong> · <small>${selectedClient.category}</small>
+                    </span>
+                    <label class="filter-rv-toggle" title="Ocultar pedidos que requieren un nivel de casa rodante mayor al tuyo">
+                        <input type="checkbox" id="toggle-filter-rv" ${filterByRv ? 'checked' : ''}> Solo mi RV
+                    </label>
+                </div>
+
+                <!-- Buscador Rápido de Producto -->
+                <div class="order-search-row">
+                    <input type="text" id="order-search-input" class="order-search-input" placeholder="🔍 Buscar producto (ej. Pan, Tofu, Lavanda...)" value="${searchQuery}">
+                </div>
+
+                <div class="order-picker-row">
+                    <select id="order-picker-select" class="order-picker-select" ${clientOrders.length === 0 ? 'disabled' : ''}>
+                        ${clientOrders.length === 0
+                            ? '<option value="">No hay pedidos disponibles con este filtro</option>'
+                            : clientOrders.map(o => {
+                                const qMeta = QUALITY_TIERS[o.quality] || QUALITY_TIERS[1];
+                                const starsStr = '★'.repeat(o.stars);
+                                return `<option value="${o.id}">
+                                    [${qMeta.name} ${starsStr}] ${o.amount}x ${o.name} (🪙 ${o.coins.toLocaleString()} monedas)
+                                </option>`;
+                            }).join('')
+                        }
+                    </select>
+                </div>
+
+                <!-- Selector de Multiplicador Oficial -->
+                <div class="order-mult-row">
+                    <span class="mult-label">Multiplicador:</span>
+                    <div class="mult-pills">
+                        <button type="button" class="mult-pill ${selectedMultiplier === 1.0 ? 'active' : ''}" data-mult="1.0">Normal (x1.0)</button>
+                        <button type="button" class="mult-pill urgent ${selectedMultiplier === 2.0 ? 'active' : ''}" data-mult="2.0">🔥 Urgente (x2.0)</button>
+                        <button type="button" class="mult-pill super ${selectedMultiplier === 5.0 ? 'active' : ''}" data-mult="5.0">⚡ Súper (x5.0)</button>
+                    </div>
+                </div>
+
+                <button type="button" id="btn-add-selected-order" class="btn-add-order ${isFull ? 'disabled' : ''}" ${isFull || clientOrders.length === 0 ? 'disabled' : ''}>
+                    ${isFull ? '⚠️ Tablón Lleno para tu Nivel de RV' : '➕ Añadir Pedido al Tablón'}
+                </button>
+            </div>
+
+            <!-- Tablón de Pedidos Activos del Jugador -->
+            <div class="active-orders-section">
+                <div class="active-orders-header">
+                    <h5>📋 Pedidos en tu Tablón Activo (${activeOrders.length}/${maxCapacity}):</h5>
+                </div>
+                <div class="active-orders-list">
+                    ${activeOrders.length === 0
+                        ? `<p class="hint small empty-hint">Tu tablón está vacío. Selecciona un cliente arriba y añade un pedido.</p>`
+                        : activeOrders.map((o, idx) => {
+                            const qMeta = QUALITY_TIERS[o.quality] || QUALITY_TIERS[1];
+                            const cMeta = o.clientMeta || ORDER_CLIENTS.find(c => c.id === o.clientId) || ORDER_CLIENTS[0];
+                            const isUrgent = (o.multiplier || 1.0) > 1.0;
+                            const totalCoins = Math.round((o.coins || 0) * (o.multiplier || 1.0));
+                            return `
+                                <div class="active-order-card ${isUrgent ? 'urgent' : ''}">
+                                    <div class="order-card-header">
+                                        <span class="order-client-tag">${cMeta.emoji} ${cMeta.name}</span>
+                                        <span class="order-tier-tag" style="background:${qMeta.bg}; color:${qMeta.color}; border:1px solid ${qMeta.border}">
+                                            ${qMeta.name} ${'★'.repeat(o.stars || 2)}
+                                        </span>
+                                        <span class="order-mult-badge ${o.multiplier === 5.0 ? 'super' : o.multiplier === 2.0 ? 'urgent' : 'normal'}">
+                                            ${o.multiplier === 5.0 ? '⚡ x5.0' : o.multiplier === 2.0 ? '🔥 x2.0' : 'x1.0'}
+                                        </span>
+                                        <button type="button" class="btn-remove-active-order" data-index="${idx}" title="Eliminar pedido">✕</button>
+                                    </div>
+                                    <div class="order-card-body">
+                                        <div class="order-req-line">
+                                            <strong>${o.amount}x ${o.name}</strong>
+                                            <span class="order-reward-pill">🪙 +${totalCoins.toLocaleString()}</span>
+                                            ${o.stamps > 0 ? `<span class="order-stamps-pill">🌸 +${o.stamps}</span>` : ''}
+                                        </div>
+                                        <div class="order-stock-line">
+                                            <label>Tengo en almacén:</label>
+                                            <input type="number" class="order-stock-input" data-index="${idx}" min="0" max="${o.amount}" value="${o.stock || 0}">
+                                            <small class="hint">Faltan: ${Math.max(0, o.amount - (o.stock || 0))}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')
+                    }
+                </div>
+            </div>
+
+            <!-- Botón de Optimización Central -->
+            <div class="contracts-actions-bar">
+                <button type="button" id="btn-optimize-contracts" class="optimize-btn contracts-btn">
+                    <span class="btn-text">🎯 Optimizar Plan para estos Pedidos</span>
+                </button>
+            </div>
+        `;
+
+        // Listeners de Pills de Clientes
+        container.querySelectorAll('.client-pill').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const idx = parseInt(e.target.dataset.index, 10);
-                const current = getActiveContracts();
-                current.splice(idx, 1);
-                saveActiveContracts(current);
-                renderContractsConfigUI(container, onContractsChanged, onOptimizeForContracts);
-                if (onContractsChanged) onContractsChanged(current);
+                const cid = btn.dataset.clientId;
+                selectedClientId = cid;
+                localStorage.setItem(SELECTED_CLIENT_KEY, cid);
+                update();
             });
         });
 
-        // Listeners para actualizar stock
-        listEl.querySelectorAll('.c-stock-input').forEach(input => {
+        // Listener Filtro RV
+        const rvCheck = container.querySelector('#toggle-filter-rv');
+        if (rvCheck) {
+            rvCheck.addEventListener('change', (e) => {
+                filterByRv = e.target.checked;
+                update();
+            });
+        }
+
+        // Listener Buscador
+        const searchInput = container.querySelector('#order-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value;
+                // debounce actualización de lista de opciones
+                const select = container.querySelector('#order-picker-select');
+                if (select) {
+                    let filtered = HOME_ORDERS_LIB.filter(o => o.clientId === selectedClientId);
+                    if (filterByRv) {
+                        filtered = filtered.filter(o => o.minRv <= currentRv && (!o.maxRv || o.maxRv >= currentRv));
+                    }
+                    if (searchQuery.trim()) {
+                        const q = searchQuery.toLowerCase().trim();
+                        filtered = filtered.filter(o =>
+                            o.name.toLowerCase().includes(q) ||
+                            (o.nameEn && o.nameEn.toLowerCase().includes(q))
+                        );
+                    }
+                    select.innerHTML = filtered.length === 0
+                        ? '<option value="">No hay pedidos coincidentes</option>'
+                        : filtered.map(o => {
+                            const qMeta = QUALITY_TIERS[o.quality] || QUALITY_TIERS[1];
+                            const starsStr = '★'.repeat(o.stars);
+                            return `<option value="${o.id}">
+                                [${qMeta.name} ${starsStr}] ${o.amount}x ${o.name} (🪙 ${o.coins.toLocaleString()} monedas)
+                            </option>`;
+                        }).join('');
+                }
+            });
+        }
+
+        // Listeners Multiplicador
+        container.querySelectorAll('.mult-pill').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedMultiplier = parseFloat(btn.dataset.mult) || 1.0;
+                container.querySelectorAll('.mult-pill').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Listener Añadir Pedido
+        const btnAdd = container.querySelector('#btn-add-selected-order');
+        if (btnAdd) {
+            btnAdd.addEventListener('click', () => {
+                const select = container.querySelector('#order-picker-select');
+                const orderId = select ? select.value : null;
+                if (!orderId) return;
+
+                const currentOrders = getActiveContracts();
+                if (currentOrders.length >= maxCapacity) {
+                    alert(`El tablón de tu Casa Rodante (Nivel ${currentRv}) solo puede tener un máximo de ${maxCapacity} pedidos.`);
+                    return;
+                }
+
+                const libOrder = HOME_ORDERS_LIB.find(o => o.id === orderId);
+                if (!libOrder) return;
+
+                const newOrder = {
+                    ...libOrder,
+                    items: [{ item: libOrder.itemKey, amount: libOrder.amount, name: libOrder.name }],
+                    type: libOrder.isSeason ? 'season' : 'daily',
+                    multiplier: selectedMultiplier,
+                    badge: selectedMultiplier === 5.0 ? '⚡ Súper Urgente x5.0' : selectedMultiplier === 2.0 ? '🔥 Urgente x2.0' : 'Normal x1.0',
+                    stock: 0,
+                    clientMeta: ORDER_CLIENTS.find(c => c.id === libOrder.clientId)
+                };
+
+                currentOrders.push(newOrder);
+                saveActiveContracts(currentOrders);
+                update();
+                if (onContractsChanged) onContractsChanged(currentOrders);
+            });
+        }
+
+        // Listeners Eliminar Pedido
+        container.querySelectorAll('.btn-remove-active-order').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(btn.dataset.index, 10);
+                const currentOrders = getActiveContracts();
+                currentOrders.splice(idx, 1);
+                saveActiveContracts(currentOrders);
+                update();
+                if (onContractsChanged) onContractsChanged(currentOrders);
+            });
+        });
+
+        // Listeners Actualizar Stock
+        container.querySelectorAll('.order-stock-input').forEach(input => {
             input.addEventListener('change', (e) => {
-                const cIdx = parseInt(e.target.dataset.cindex, 10);
-                const iIdx = parseInt(e.target.dataset.iindex, 10);
-                const val = Math.max(0, parseInt(e.target.value, 10) || 0);
-                const current = getActiveContracts();
-                if (current[cIdx] && current[cIdx].items[iIdx]) {
-                    current[cIdx].items[iIdx].stock = val;
-                    saveActiveContracts(current);
-                    if (onContractsChanged) onContractsChanged(current);
+                const idx = parseInt(input.dataset.index, 10);
+                const val = Math.max(0, parseInt(input.value, 10) || 0);
+                const currentOrders = getActiveContracts();
+                if (currentOrders[idx]) {
+                    currentOrders[idx].stock = val;
+                    saveActiveContracts(currentOrders);
+                    if (onContractsChanged) onContractsChanged(currentOrders);
                 }
             });
         });
+
+        // Listener Optimizar Plan
+        const btnOptimize = container.querySelector('#btn-optimize-contracts');
+        if (btnOptimize) {
+            btnOptimize.addEventListener('click', () => {
+                if (onOptimizeForContracts) onOptimizeForContracts(activeOrders);
+            });
+        }
     }
 
-    // 5. Botón de Optimización
-    const btnOptimize = container.querySelector('#btn-optimize-contracts');
-    if (btnOptimize) {
-        btnOptimize.addEventListener('click', () => {
-            if (onOptimizeForContracts) onOptimizeForContracts(contracts);
-        });
-    }
+    update();
 }
 
 /**
- * Renderiza la tarjeta de Resultados y Auditoría de Contratos en la columna derecha del plan.
+ * Renderiza la tarjeta de Resultados y Auditoría de Pedidos en la columna derecha del plan.
  */
-export function renderContractsResultCard(resultContainer, plan, contracts = getActiveContracts()) {
+export function renderContractsResultCard(resultContainer, plan, activeOrders = getActiveContracts()) {
     if (!resultContainer) return;
-    if (!contracts || contracts.length === 0) {
+    if (!activeOrders || activeOrders.length === 0) {
         resultContainer.style.display = 'none';
         return;
     }
 
-    const analysis = calculateContractsAnalysis(plan, contracts);
+    const analysis = calculateContractsAnalysis(plan, activeOrders);
     resultContainer.style.display = 'block';
 
     resultContainer.innerHTML = `
         <div class="card-head">
-            <h3>📜 Cumplimiento y Ganancias de Contratos Diarios</h3>
+            <h3>📜 Cumplimiento y Ganancias de Pedidos Diarios</h3>
             <span class="badge ${analysis.allDone ? 'badge-success' : 'badge-warning'}">
                 ${analysis.allDone ? '✅ Todos listos para entregar' : `⏳ ETA Máximo: ${analysis.maxCompletionEtaFormatted}`}
             </span>
@@ -567,46 +573,46 @@ export function renderContractsResultCard(resultContainer, plan, contracts = get
                 <span class="kpi-val text-season">🌸 +${analysis.totalSeasonStamps.toLocaleString()}</span>
             </div>` : ''}
             <div class="contract-kpi-pill">
-                <span class="kpi-label">Pedidos Activos</span>
-                <span class="kpi-val">${analysis.contracts.length} en seguimiento</span>
+                <span class="kpi-label">Pedidos en Tablón</span>
+                <span class="kpi-val">${analysis.contracts.length} activos</span>
             </div>
         </div>
 
         <div class="contract-cards-breakdown">
-            ${analysis.contracts.map(c => `
-                <div class="contract-eval-card ${c.contractAllDone ? 'done' : ''}">
-                    <div class="c-eval-header">
-                        <span class="contract-badge ${c.type}">${c.badge}</span>
-                        <strong>${c.name}</strong>
-                        <span class="c-eval-eta ${c.contractAllDone ? 'text-green' : 'text-amber'}">${c.etaFormatted}</span>
+            ${analysis.contracts.map(o => {
+                const qMeta = QUALITY_TIERS[o.quality] || QUALITY_TIERS[1];
+                const cMeta = o.clientMeta || ORDER_CLIENTS.find(c => c.id === o.clientId) || ORDER_CLIENTS[0];
+                const pct = o.required > 0 ? Math.min(100, Math.round((o.stock / o.required) * 100)) : 100;
+                const isUrgent = (o.multiplier || 1.0) > 1.0;
+
+                return `
+                    <div class="contract-eval-card ${o.contractAllDone ? 'done' : ''}">
+                        <div class="c-eval-header">
+                            <span class="order-client-tag">${cMeta.emoji} ${cMeta.name}</span>
+                            <span class="order-tier-tag" style="background:${qMeta.bg}; color:${qMeta.color}; border:1px solid ${qMeta.border}">
+                                ${qMeta.name} ${'★'.repeat(o.stars || 2)}
+                            </span>
+                            <span class="order-mult-badge ${o.multiplier === 5.0 ? 'super' : o.multiplier === 2.0 ? 'urgent' : 'normal'}">
+                                ${o.multiplier === 5.0 ? '⚡ Súper x5.0' : o.multiplier === 2.0 ? '🔥 Urgente x2.0' : 'Normal x1.0'}
+                            </span>
+                            <strong style="margin-left: 0.25rem;">${o.amount}x ${o.name}</strong>
+                            <span class="c-eval-eta ${o.contractAllDone ? 'text-green' : 'text-amber'}">${o.etaFormatted}</span>
+                        </div>
+                        <div class="c-eval-rewards">
+                            <span>🪙 Recompensa: <b>+${o.rewardCoinsEffective.toLocaleString()} monedas</b></span>
+                            ${o.rewardSeasonStamps > 0 ? `<span>🌸 <b>+${o.rewardSeasonStamps} Sellos</b></span>` : ''}
+                            <span style="margin-left: auto;">🏭 Fabricado en: <b>${o.facility}</b></span>
+                        </div>
+                        <div class="c-progress-bar-bg" style="margin-top: 0.35rem;">
+                            <div class="c-progress-bar-fill" style="width: ${pct}%;"></div>
+                        </div>
+                        <div class="c-eval-stats">
+                            <span>Inventario: ${o.stock} / ${o.required} (Faltan: ${o.pending})</span>
+                            <span>Producción base: ${o.unitsPerHour > 0 ? `+${o.unitsPerHour.toFixed(1)}/h` : '0/h'}</span>
+                        </div>
                     </div>
-                    <div class="c-eval-rewards">
-                        <span>🪙 Recompensa: <b>+${c.rewardCoinsEffective.toLocaleString()} monedas</b></span>
-                        ${c.rewardSeasonStamps > 0 ? `<span>🌸 <b>+${c.rewardSeasonStamps} Sellos</b></span>` : ''}
-                    </div>
-                    <div class="c-eval-items-grid">
-                        ${c.items.map(it => {
-                            const pct = it.required > 0 ? Math.min(100, Math.round((it.stock / it.required) * 100)) : 100;
-                            return `
-                                <div class="c-eval-item-box ${it.status}">
-                                    <div class="c-eval-item-title">
-                                        <span>${it.name}</span>
-                                        <small class="c-fac-hint">${it.facility}</small>
-                                    </div>
-                                    <div class="c-progress-bar-bg">
-                                        <div class="c-progress-bar-fill" style="width: ${pct}%;"></div>
-                                    </div>
-                                    <div class="c-eval-stats">
-                                        <span>${it.stock} / ${it.required} (${it.pending} faltantes)</span>
-                                        <span>${it.unitsPerHour > 0 ? `+${it.unitsPerHour.toFixed(1)}/h` : '0/h'}</span>
-                                    </div>
-                                    <div class="c-eval-eta-note">${it.etaText}</div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-            `).join('')}
+                `;
+            }).join('')}
         </div>
     `;
 }
