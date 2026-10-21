@@ -3825,6 +3825,27 @@ tr:hover .skip-row,
     font-weight: 700;
 }
 
+.client-pill.season-pill {
+    border-color: rgba(236, 72, 153, 0.45);
+    background: rgba(236, 72, 153, 0.08);
+    color: #f472b6;
+}
+
+.client-pill.season-pill:hover {
+    border-color: #ec4899;
+    color: #fbcfe8;
+    background: rgba(236, 72, 153, 0.16);
+    box-shadow: 0 0 10px rgba(236, 72, 153, 0.25);
+}
+
+.client-pill.season-pill.active {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(219, 39, 119, 0.45));
+    border-color: #ec4899;
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(236, 72, 153, 0.4);
+    font-weight: 700;
+}
+
 .client-pill.locked {
     opacity: 0.5;
     cursor: not-allowed;
@@ -4141,6 +4162,44 @@ tr:hover .skip-row,
     background: rgba(236, 72, 153, 0.15);
     padding: 0.12rem 0.45rem;
     border-radius: 4px;
+}
+
+.order-stamps-pill.season-pts {
+    background: rgba(236, 72, 153, 0.22);
+    color: #fbcfe8;
+    border: 1px solid rgba(236, 72, 153, 0.45);
+}
+
+.order-season-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(236, 72, 153, 0.25));
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    border-radius: 4px;
+    padding: 0.12rem 0.45rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.order-selector-box.season-box {
+    border-color: rgba(236, 72, 153, 0.4);
+    background: linear-gradient(180deg, rgba(236, 72, 153, 0.08), var(--surface, #0f172a));
+}
+
+.active-order-card.season {
+    border-left: 4px solid #ec4899;
+    border-color: rgba(236, 72, 153, 0.35);
+    background: linear-gradient(135deg, var(--surface, #0f172a), rgba(236, 72, 153, 0.05));
+}
+
+.contract-eval-card.season {
+    border-left: 4px solid #ec4899;
+    border-color: rgba(236, 72, 153, 0.35);
+    background: linear-gradient(135deg, var(--surface, #0f172a), rgba(236, 72, 153, 0.05));
 }
 
 .order-stock-line {
