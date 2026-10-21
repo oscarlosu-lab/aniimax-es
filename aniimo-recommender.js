@@ -1,4 +1,5 @@
 // aniimo-recommender.js - Recomendador inteligente de Aniimos basado en Datamine Oficial
+import { FACILITIES, PERSONALITY_PAIRS, personalityLetter, opposedPersonality } from './facility-config.js';
 
 let creaturesDatabase = null;
 let databaseLoading = null;
@@ -50,6 +51,170 @@ const ABILITY_ES_NAME = {
     'Leisure': 'Ocio', 'Ocio': 'Ocio',
     'Perfumery': 'Perfumería', 'Perfumería': 'Perfumería'
 };
+
+export const PERSONALITY_META = {
+    'Instinctive': { letter: 'I', es: 'Instintivo', axis: 'I/E', default: false, desc: 'Intuición animal y reflejos rápidos' },
+    'Energetic': { letter: 'E', es: 'Enérgico', axis: 'I/E', default: true, desc: 'Alta vitalidad y dinamismo en labores' },
+    'Nimble': { letter: 'N', es: 'Ágil', axis: 'N/S', default: true, desc: 'Destreza veloz y aceleración' },
+    'Practical': { letter: 'S', es: 'Práctico', axis: 'N/S', default: false, desc: 'Eficiencia pragmática y cero desperdicio' },
+    'Faithful': { letter: 'F', es: 'Fiel', axis: 'F/T', default: false, desc: 'Constancia y dedicación incansable' },
+    'Tenacious': { letter: 'T', es: 'Tenaz', axis: 'F/T', default: true, desc: 'Resistencia a la fatiga y decaimiento de ánimo' },
+    'Playful': { letter: 'P', es: 'Juguetón', axis: 'P/J', default: false, desc: 'Creatividad, motivación e ingenio' },
+    'Judicious': { letter: 'J', es: 'Sensato', axis: 'P/J', default: true, desc: 'Pulcritud y máxima precisión artesanal' },
+};
+
+export const FACILITY_ES_NAME = {
+    'Mine': 'Mina',
+    'Well': 'Pozo',
+    'Tidewhisper Sandcastle': 'Castillo de arena susurrante',
+    'Dewy House': 'Casa del rocío',
+    'Nimbus Bed': 'Cama nimbus',
+    'Starfall Hammock': 'Hamaca de estrellas',
+    'Floral Windmill': 'Molino floral',
+    'Carousel Mill': 'Molino de carrusel',
+    'Crafting Table': 'Mesa de artesanía',
+    'Claw Game Cooker': 'Cocina de garra',
+    'Jukebox Dryer': 'Secadora musical',
+    'Simmering Pot': 'Olla a fuego lento',
+    'Phonolfactory Table': 'Mesa fonolfativa',
+    'Bouncy Brew Keg': 'Barril saltarín',
+    'Blazing Stove': 'Cocina abrasadora',
+    'Pickling Jar': 'Frasco de encurtidos',
+    'Joy Wheel Loom': 'Telar de rueda',
+    'Woodworking Bench': 'Banco de carpintería',
+    'Chimney Kiln': 'Horno de chimenea',
+    'Farmland': 'Parcela de cultivo',
+    'Woodland': 'Bosque maderero',
+    'Dance Pad Polisher': 'Pulidora de pista',
+    'Aniipod Maker': 'Fabricadora de Aniipods'
+};
+
+export function computeOptimalPersonalityProfile(roles) {
+    const requested = [];
+    const seenFacNames = new Set();
+
+    for (const role of roles) {
+        // Combinar nombres técnicos y textos descriptivos para detectar la instalación
+        const candidates = (role.facilities || []).concat([role.where || '']);
+        for (const cand of candidates) {
+            if (!cand) continue;
+            for (const fac of FACILITIES) {
+                if (!fac.personality) continue;
+                const esName = FACILITY_ES_NAME[fac.name] || fac.name;
+                const matches = cand === fac.name || 
+                                cand === fac.slug || 
+                                cand === esName || 
+                                cand.includes(fac.name) || 
+                                cand.includes(esName);
+                if (matches && !seenFacNames.has(fac.name)) {
+                    seenFacNames.add(fac.name);
+                    const meta = PERSONALITY_META[fac.personality];
+                    if (meta) {
+                        requested.push({
+                            facility: fac.name,
+                            facilityEs: esName,
+                            personality: fac.personality,
+                            letter: meta.letter,
+                            es: meta.es
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    const mbti = [];
+    const activeBonuses = [];
+    const conflicts = [];
+
+    PERSONALITY_PAIRS.forEach((pair) => {
+        const matches = requested.filter(r => pair.names.includes(r.personality));
+        const distinctLetters = [...new Set(matches.map(m => m.letter))];
+
+        if (distinctLetters.length > 1) {
+            // Conflicto de personalidades opuestas en el mismo eje
+            const chosen = distinctLetters[0];
+            mbti.push(chosen);
+            const facA = matches.find(m => m.letter === distinctLetters[0]);
+            const facB = matches.find(m => m.letter === distinctLetters[1]);
+            conflicts.push({
+                axis: pair.letters.join('/'),
+                letters: distinctLetters,
+                desc: `${facA.es} (${facA.letter}) en ${facA.facilityEs} vs ${facB.es} (${facB.letter}) en ${facB.facilityEs}`
+            });
+            activeBonuses.push({
+                facility: facA.facility,
+                facilityEs: facA.facilityEs,
+                personality: facA.personality,
+                letter: facA.letter,
+                es: facA.es,
+                bonus: '+20% vel.'
+            });
+        } else if (distinctLetters.length === 1) {
+            const letter = distinctLetters[0];
+            mbti.push(letter);
+            const seenFac = new Set();
+            matches.forEach(m => {
+                if (!seenFac.has(m.facility)) {
+                    seenFac.add(m.facility);
+                    activeBonuses.push({
+                        facility: m.facility,
+                        facilityEs: m.facilityEs,
+                        personality: m.personality,
+                        letter: m.letter,
+                        es: m.es,
+                        bonus: '+20% vel.'
+                    });
+                }
+            });
+        } else {
+            const defaultName = pair.names.find(n => PERSONALITY_META[n]?.default) || pair.names[0];
+            mbti.push(PERSONALITY_META[defaultName].letter);
+        }
+    });
+
+    return {
+        mbti: mbti.join('·'),
+        rawMBTI: mbti.join(''),
+        activeBonuses,
+        conflicts,
+        hasBonuses: activeBonuses.length > 0,
+        hasConflicts: conflicts.length > 0
+    };
+}
+
+function renderPersonalityBlock(profile) {
+    if (!profile) return '';
+
+    let bonusesHtml = '';
+    if (profile.activeBonuses && profile.activeBonuses.length > 0) {
+        bonusesHtml = profile.activeBonuses.map(b => 
+            `<span class="recommender-pers-pill bonus" title="Otorga +20% de velocidad de trabajo en ${b.facilityEs}">⚡ [${b.letter}] ${b.es} (+20% en ${b.facilityEs})</span>`
+        ).join('');
+    } else {
+        bonusesHtml = `<span class="recommender-pers-pill neutral" title="Esta criatura realiza labores generales; este rasgo optimiza su rendimiento">⚡ [${profile.mbti.split('·')[0]}] ${PERSONALITY_META['Energetic'].es} (Utilidad general)</span>`;
+    }
+
+    let conflictsHtml = '';
+    if (profile.conflicts && profile.conflicts.length > 0) {
+        conflictsHtml = profile.conflicts.map(c => 
+            `<div class="recommender-pers-conflict" title="Un Aniimo no puede tener ambas personalidades opuestas simultáneamente">⚠️ <strong>Conflicto ${c.axis}:</strong> ${c.desc}. Se prioriza la primera labor.</div>`
+        ).join('');
+    }
+
+    return `
+        <div class="recommender-personality-block">
+            <div class="recommender-pers-header">
+                <span class="recommender-pers-title">🧬 <strong>Personalidad recomendada:</strong></span>
+                <span class="recommender-mbti-badge" title="Perfil MBTI de 4 ejes ideal para eclosionar o usar Fruta de Personalidad">MBTI: <strong>${profile.mbti}</strong></span>
+            </div>
+            <div class="recommender-pers-pills-row">
+                ${bonusesHtml}
+            </div>
+            ${conflictsHtml}
+        </div>
+    `;
+}
 
 const DISPLAY_ABILITIES = ['Fuego', 'Hierba', 'Agua', 'Tierra', 'Relámpago', 'Hielo', 'Viento', 'Oscuro', 'Luz', 'Remolque', 'Artesanía', 'Ocio', 'Perfumería'];
 
@@ -134,6 +299,7 @@ export async function recommendAniimos(keptGroups, maxSlots = 26, options = {}) 
         const count = group.count || 1;
         
         let whereDesc = '';
+        const facilityNames = group.where && group.where.size ? [...group.where.keys()] : [];
         if (group.where && group.where.size) {
             whereDesc = [...group.where.entries()]
                 .map(([place, n]) => n > 1 ? `${place} ×${n}` : place)
@@ -201,6 +367,7 @@ export async function recommendAniimos(keptGroups, maxSlots = 26, options = {}) 
                 requiredLevel: requiredLevel,
                 providedLevel: provLvl,
                 where: whereDesc,
+                facilities: facilityNames,
                 personalityBonus: group.bonus,
                 haulingBonus: chosenCreature.abilities['Remolque'] || 0
             });
@@ -239,6 +406,7 @@ export async function recommendAniimos(keptGroups, maxSlots = 26, options = {}) 
                 requiredLevel: 1,
                 providedLevel: hLvl,
                 where: 'Transporte continuo al Almacén',
+                facilities: [],
                 personalityBonus: false,
                 haulingBonus: hLvl
             });
@@ -268,11 +436,15 @@ export async function recommendAniimos(keptGroups, maxSlots = 26, options = {}) 
             ability: r.ability,
             level: r.providedLevel,
             where: r.where,
+            facilities: r.facilities || [],
             bonus: r.personalityBonus
         });
     }
 
     const consolidatedRecommendations = [...groupedMap.values()];
+    for (const item of consolidatedRecommendations) {
+        item.personalityProfile = computeOptimalPersonalityProfile(item.roles);
+    }
 
     const effectiveMax = maxSlots || 26;
     const freeSlots = Math.max(0, effectiveMax - totalAssigned);
@@ -386,6 +558,7 @@ export function renderRecommenderUI(recommendationData, containerEl, onUpdateOpt
                         ${abilitiesBadges}
                     </div>
                     ${habitatText ? `<div class="recommender-habitat-line">${habitatText}</div>` : ''}
+                    ${renderPersonalityBlock(rec.personalityProfile)}
                     ${altHtml}
                 </div>
             </div>
@@ -424,6 +597,9 @@ export function renderRecommenderUI(recommendationData, containerEl, onUpdateOpt
                     <input type="checkbox" id="recommender-only-wild-toggle" ${onlyWild ? 'checked' : ''}>
                     <span>🌿 Priorizar Aniimos salvajes (fáciles de capturar)</span>
                 </label>
+                <div class="recommender-mbti-toolbar-pill" title="El algoritmo calcula el perfil MBTI ideal y las personalidades que otorgan +20% de velocidad a cada criatura en su instalación">
+                    <span>🧬 Personalidad MBTI (+20% vel) Activa</span>
+                </div>
                 <button type="button" class="button small" id="recommender-copy-btn">📋 Copiar lista completa</button>
             </div>
 
@@ -466,7 +642,8 @@ export function renderRecommenderUI(recommendationData, containerEl, onUpdateOpt
             recommendations.forEach(r => {
                 const tasks = r.roles.map(rl => `${rl.where} (${rl.ability} Lv.${rl.level})`).join(', ');
                 const wildMark = r.isWild ? '[Salvaje]' : '[Evolución]';
-                lines.push(`• ${r.creature.name} (${r.creature.dex}) ${wildMark} ×${r.totalCount} -> ${tasks}`);
+                const mbtiText = r.personalityProfile ? ` [MBTI: ${r.personalityProfile.mbti}]` : '';
+                lines.push(`• ${r.creature.name} (${r.creature.dex}) ${wildMark} ×${r.totalCount} -> ${tasks}${mbtiText}`);
             });
             const textToCopy = lines.join('\n');
             navigator.clipboard.writeText(textToCopy).then(() => {
