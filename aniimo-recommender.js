@@ -1,3 +1,4 @@
+import { getActiveContracts } from './contracts-manager.js';
 // aniimo-recommender.js - Recomendador inteligente de Aniimos basado en Datamine Oficial
 import { FACILITIES, PERSONALITY_PAIRS, personalityLetter, opposedPersonality } from './facility-config.js';
 
@@ -495,10 +496,25 @@ export function renderRecommenderUI(recommendationData, containerEl, onUpdateOpt
                 return `<span class="recommender-skill-pill${isPrimary ? ' active-target' : ''}">${ab} Lv.${lvl}</span>`;
             }).join('');
 
-        // Tareas desglosadas con claridad
+        // Tareas desglosadas con claridad y etiquetas de contratos
+        const activeContracts = getActiveContracts();
+        const urgentItems = new Set(activeContracts.filter(c => c.type === 'urgent').flatMap(c => c.items.map(it => it.item.toLowerCase())));
+        const seasonItems = new Set(activeContracts.filter(c => c.type === 'season').flatMap(c => c.items.map(it => it.item.toLowerCase())));
+
         const tasksHtml = rec.roles.map(role => {
             const countStr = role.count > 1 ? `<strong>×${role.count}</strong> en ` : '';
-            return `<div class="recommender-subtask">• ${countStr}<span>${role.where}</span> <small class="hint">(${role.ability} Lv.${role.level})</small></div>`;
+            const whereLower = (role.where || '').toLowerCase();
+            const isContractUrgent = Array.from(urgentItems).some(it => whereLower.includes(it.replace('_', ' ')));
+            const isContractSeason = Array.from(seasonItems).some(it => whereLower.includes(it.replace('_', ' ')));
+            
+            let badge = '';
+            if (isContractUrgent) {
+                badge = `<span class="contract-facility-pill" title="Esta asignación produce un material requerido por tus contratos urgentes">⚡ Pedido Urgente</span>`;
+            } else if (isContractSeason) {
+                badge = `<span class="contract-facility-pill" style="border-color:#f472b6; color:#f472b6; background:rgba(236,72,153,0.15)" title="Produce material para el evento o pase de temporada">🌸 Evento</span>`;
+            }
+
+            return `<div class="recommender-subtask">• ${countStr}<span>${role.where}</span> <small class="hint">(${role.ability} Lv.${role.level})</small>${badge}</div>`;
         }).join('');
 
         const habitatText = c.habitat ? `📍 <strong>Hábitat:</strong> ${c.habitat}` : '';
