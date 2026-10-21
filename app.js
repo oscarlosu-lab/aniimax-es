@@ -961,7 +961,7 @@ function improvementGain(result) {
                     : `Level-up in ${about}${formatDuration(after)}`,
             };
         }
-        const label = ranking.measure === 'coins' ? 'Home Coins' : priorityLabel(ranking.measure, planContext?.aniipod);
+        const label = ranking.measure === 'coins' ? translate('Home Coins') : priorityLabel(ranking.measure, planContext?.aniipod);
         const added = `+${formatRate((result.top - base.top) * multiplier)}${suffix}`;
         return {
             score: 1 + (base.top > 0 ? (result.top - base.top) / base.top : 1),
@@ -973,7 +973,7 @@ function improvementGain(result) {
         const gain = (coins.value - coins.base) / coins.base;
         return {
             score: gain,
-            text: `${about}+${formatPercent(gain)} Home Coins (+${formatRate((coins.value - coins.base) * multiplier)}${suffix})`,
+            text: `${about}+${formatPercent(gain)} ${translate('Home Coins')} (+${formatRate((coins.value - coins.base) * multiplier)}${suffix})`,
         };
     }
     return null;
@@ -995,9 +995,9 @@ function renderImprovements() {
     card.style.display = 'block';
     const checked = ranking.results.filter(Boolean).length;
     const total = ranking.candidates.length;
-    const within = ranking.homeLevel ? ` Within RV ${ranking.homeLevel} limits.` : '';
-    const by = ranking.measure === 'level_up' ? 'level-up time, then Home Coins'
-        : ranking.measure === 'coins' ? 'Home Coins' : `${priorityLabel(ranking.measure, planContext?.aniipod)}, then Home Coins`;
+    const within = ranking.homeLevel ? ` ${translate('Within RV {level} limits.').replace('{level}', ranking.homeLevel)}` : '';
+    const by = ranking.measure === 'level_up' ? translate('level-up time, then Home Coins')
+        : ranking.measure === 'coins' ? translate('Home Coins') : `${priorityLabel(ranking.measure, planContext?.aniipod)}, ${translate('then Home Coins')}`;
     // One row per change, or per group: the least of it that gets the most it can (see
     // `improvementCandidates`).
     const best = new Map();
@@ -1680,11 +1680,11 @@ function startProgress(input, runId) {
     // and Kiln time) are one step, and every plan's last is its final solve and the re-check
     // of it against every limit: the worker's steps map onto these (see `setStep`).
     const steps = [
-        ...priorities.map(target => ({ key: `priority:${target}`, label: `Most ${priorityLabel(target, planContext.aniipod)}` })),
-        { key: 'plan', label: levelUp ? 'Fastest Level-Up' : priorities.length ? "Home Coins with What's Left" : 'Máximas monedas del hogar' },
-        { key: 'layout', label: 'Diseño del Hogar' },
-        { key: 'improve', label: 'Opportunities' },
-        { key: 'minimum', label: 'Plan mínimo de equipo' },
+        ...priorities.map(target => ({ key: `priority:${target}`, label: `${translate('Most')} ${priorityLabel(target, planContext.aniipod)}` })),
+        { key: 'plan', label: levelUp ? translate('Fastest Level-Up') : priorities.length ? translate("Home Coins with What's Left") : translate('Most Home Coins') },
+        { key: 'layout', label: translate('Diseño del Hogar') },
+        { key: 'improve', label: translate('Opportunities') },
+        { key: 'minimum', label: translate('Minimum Team Plan') },
     ];
     progress = { runId, steps: steps.map(step => ({ ...step, state: 'pending' })) };
     renderProgress();
@@ -2278,8 +2278,11 @@ function wantsAniipods() {
 
 // A priority's name, with the Aniipod tier the plan would make.
 function priorityLabel(target, aniipod = bestAniipod()) {
-    if (target === 'aniipods') return aniipod ? prettyItem(aniipod) : 'Aniipods';
-    return PRIORITY_TARGETS.find(t => t.id === target)?.label || CURRENCY_LABELS[target] || target;
+    if (target === 'aniipods') return aniipod ? prettyItem(aniipod) : translate('Aniipods');
+    const priority = PRIORITY_TARGETS.find(t => t.id === target);
+    if (priority) return translate(priority.label);
+    if (CURRENCY_LABELS[target]) return translate(CURRENCY_LABELS[target]);
+    return translate(target);
 }
 
 function renderPriorities() {
@@ -2554,9 +2557,9 @@ function renderLevelUp(plan) {
         .map(r => ({ name: r.name, spare: Math.floor(r.have + r.per_second * report.seconds - r.need) }))
         .concat((report.leftovers || []).map(([name, amount]) => ({ name, spare: Math.floor(amount) })))
         .filter(r => r.spare >= 1)
-        .map(r => `${formatNumber(r.spare)} ${r.name === 'coins' ? 'Home Coins' : ITEM_NAMES[r.name] || prettyItem(r.name)}`);
+        .map(r => `${formatNumber(r.spare)} ${r.name === 'coins' ? translate('Home Coins') : ITEM_NAMES[r.name] ? translate(ITEM_NAMES[r.name]) : prettyItem(r.name)}`);
     const coinsNote = surplus.length
-        ? `<p class="level-up-coins"><span>Surplus:</span> <strong>${surplus.join(', ')}</strong></p>`
+        ? `<p class="level-up-coins"><span>${translate('Surplus')}:</span> <strong>${surplus.join(', ')}</strong></p>`
         : '';
     lines.innerHTML = `
         <table class="level-up-lines">
@@ -2597,8 +2600,8 @@ function renderSeedTable(plan) {
     const totalCost = rows.reduce((sum, r) => sum + r.cost, 0);
     const totalWheat = rows.reduce((sum, r) => sum + r.wheat, 0);
     const totals = [
-        totalCost > 0 ? `${amount(totalCost)} Home Coins` : '',
-        totalWheat > 0 ? `${amount(totalWheat)} ${SEASON.currency}` : '',
+        totalCost > 0 ? `${amount(totalCost)} ${translate('Home Coins')}` : '',
+        totalWheat > 0 ? `${amount(totalWheat)} ${translate(SEASON.currency)}` : '',
     ].filter(Boolean).join(' + ');
     card.style.display = 'block';
     const per = levelUp
@@ -2612,7 +2615,7 @@ function renderSeedTable(plan) {
                 <td>${prettyItem(r.name)}</td>
                 <td>${r.plots}</td>
                 <td>${amount(r.seeds)}</td>
-                <td>${r.wheat > 0 ? `${amount(r.wheat)} ${SEASON.currency}` : r.cost > 0 ? `${amount(r.cost)} Monedas del Hogar` : 'Gratis'}</td>
+                <td>${r.wheat > 0 ? `${amount(r.wheat)} ${translate(SEASON.currency)}` : r.cost > 0 ? `${amount(r.cost)} ${translate('Home Coins')}` : translate('Free')}</td>
             </tr>`).join('')}</tbody>
             ${rows.length > 1 && totals ? `<tfoot><tr><td colspan="3">Total</td><td>${totals}</td></tr></tfoot>` : ''}
         </table>`;
@@ -2770,7 +2773,7 @@ function renderGoalTargets(plan) {
 }
 
 function goalName(row) {
-    return row.target === 'coins' ? 'Home Coins' : row.label;
+    return row.target === 'coins' ? translate('Home Coins') : row.label;
 }
 
 // Renders the item-level production breakdown from `goalResult.products`; one row per income
@@ -2794,7 +2797,7 @@ function renderProductBreakdown(goalResult) {
 
     const unit = document.getElementById('rate-unit').value;
     const { multiplier, suffix } = RATE_UNIT_SECONDS[unit] || RATE_UNIT_SECONDS.second;
-    document.getElementById('product-breakdown-rate-header').innerHTML = `Profit <span class="th-unit">Home Coins${suffix}</span>`;
+    document.getElementById('product-breakdown-rate-header').innerHTML = `${translate('Profit')} <span class="th-unit">${translate('Home Coins')}${suffix}</span>`;
     // During the season, what each item counts toward the season's points.
     const season = lastPlan?.season_points != null;
     const pointsEach = new Map((lastPlan?.income_streams || []).map(s => [s.item_name, s.points || 0]));
@@ -3734,8 +3737,8 @@ function updateRateDisplay(pickUnit = false) {
     const table = document.getElementById('priority-rates');
     if (!rows) {
         if (select.closest('#priority-rates')) rateLine.appendChild(select);
-        const label = CURRENCY_LABELS[lastPlan.currency] || lastPlan.currency;
-        const points = lastPlan.season_points > 1e-12 ? ` + ${formatRate(lastPlan.season_points * multiplier)} ${SEASON.points}` : '';
+        const label = translate(CURRENCY_LABELS[lastPlan.currency] || lastPlan.currency);
+        const points = lastPlan.season_points > 1e-12 ? ` + ${formatRate(lastPlan.season_points * multiplier)} ${translate(SEASON.points)}` : '';
         document.getElementById('plan-rate').textContent = `${formatRate(lastPlan.rate_per_second * multiplier)} ${label}${points}${suffix}`;
         document.getElementById('rate-label').textContent = translate('Tu tasa');
         rateLine.style.display = '';
@@ -3745,7 +3748,7 @@ function updateRateDisplay(pickUnit = false) {
     // Priorities: one row each, in the player's order, at the selected unit.
     const amount = formatRate;
     const body = rows.map(r => {
-        const why = r.perSecond <= 1e-9 && r.missing ? `<span class="hint small">${r.missing}</span>` : '';
+        const why = r.perSecond <= 1e-9 && r.missing ? `<span class="hint small">${translate(r.missing)}</span>` : '';
         // Aniimo EXP names the Growth items making it; an Aniipod row is already named by tier.
         const made = r.target === 'aniimo_exp'
             ? r.items.filter(([, n]) => n > 1e-9).map(([item, n]) => `${amount(n * multiplier)} ${prettyItem(item)}`).join(', ')
@@ -3784,11 +3787,11 @@ function priorityRows(plan) {
         missing: missing[p.target] || null,
     }));
     if (!rows.some(r => r.target === 'coins')) {
-        rows.push({ rank: null, target: 'coins', label: rows.length ? "Home Coins, from what's left" : 'Home Coins', perSecond: plan.rate_per_second, items: [], missing: null });
+        rows.push({ rank: null, target: 'coins', label: rows.length ? translate("Home Coins, from what's left") : translate('Home Coins'), perSecond: plan.rate_per_second, items: [], missing: null });
     }
     // During the season, points come with every season item sold, ranked or not.
     if (plan.season_points != null && !rows.some(r => r.target === 'season_points')) {
-        rows.push({ rank: null, target: 'season_points', label: SEASON.points, perSecond: plan.season_points, items: [], missing: null });
+        rows.push({ rank: null, target: 'season_points', label: translate(SEASON.points), perSecond: plan.season_points, items: [], missing: null });
     }
     return rows;
 }
