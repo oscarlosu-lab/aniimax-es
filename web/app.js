@@ -13,6 +13,12 @@ import { allocateTurnFacilities, redistributeTurnFacilityRows } from './turn-job
 import { createShareUrl, readShareHash, urlWithoutShare } from './share-config.js';
 import { recommendAniimos, renderRecommenderUI } from './aniimo-recommender.js';
 import { initExtraFeatures, updateExecutiveKPI, updateFoodAutonomy } from './extra-features.js';
+import {
+    renderContractsConfigUI,
+    renderContractsResultCard,
+    calculateContractsAnalysis,
+    getActiveContracts
+} from './contracts-manager.js';
 import { setBilingual, isBilingual } from './i18n.js';
 
 let recommenderAllowPrismana = true;
@@ -3878,6 +3884,10 @@ function displayPlan(plan) {
     renderFacilityPlan(plan);
     renderAniimoSummary(plan);
     updateExecutiveKPI(plan);
+    const contractsResultCard = document.getElementById('contracts-results-card');
+    if (contractsResultCard) {
+        renderContractsResultCard(contractsResultCard, plan, getActiveContracts());
+    }
     // The page stays where the player is; the results appear without scrolling to them.
 }
 
@@ -4319,6 +4329,21 @@ async function initApp() {
         if (lastPlan) displayPlan(lastPlan);
     });
 
+    const contractsConfigEl = document.getElementById('contracts-config-container');
+    if (contractsConfigEl) {
+        renderContractsConfigUI(
+            contractsConfigEl,
+            (updatedContracts) => {
+                if (lastPlan) {
+                    renderContractsResultCard(document.getElementById('contracts-results-card'), lastPlan, updatedContracts);
+                }
+            },
+            (contractsToOptimize) => {
+                applyContractsOptimization(contractsToOptimize);
+            }
+        );
+    }
+
     window.addEventListener('hashchange', async () => {
         if (!window.location.hash) return;
         try {
@@ -4496,3 +4521,59 @@ document.addEventListener('focusin', (e) => {
 });
 document.addEventListener('focusout', hideTip);
 window.addEventListener('scroll', hideTip, { passive: true, capture: true });
+
+function applyContractsOptimization(contractsToOptimize) {
+    if (!contractsToOptimize || contractsToOptimize.length === 0) return;
+
+    // 1. Desbloquear/des-omitir cualquier receta requerida por los contratos si estaba en skippedRecipes
+    const allItems = contractsToOptimize.flatMap(c => (c.items || []).map(it => it.item));
+    let changedSkipped = false;
+    allItems.forEach(item => {
+        if (skippedRecipes && skippedRecipes.has(item)) {
+            skippedRecipes.delete(item);
+            changedSkipped = true;
+        }
+    });
+    if (changedSkipped && typeof renderSkippedChips === 'function') {
+        renderSkippedChips();
+    }
+
+    // 2. Si hay contratos de temporada, asegurar que el modo de temporada esté activado
+    const hasSeason = contractsToOptimize.some(c => c.type === 'season');
+    if (hasSeason) {
+        const seasonCheckbox = document.getElementById('season-on');
+        if (seasonCheckbox && !seasonCheckbox.checked) {
+            seasonCheckbox.checked = true;
+            seasonCheckbox.dispatchEvent(new Event('change'));
+        }
+    }
+
+    // 3. Cambiar a estrategia de Prioridades para enfocar recursos
+    const prioritiesRadio = document.getElementById('strategy-priorities');
+    if (prioritiesRadio && !prioritiesRadio.checked) {
+        prioritiesRadio.checked = true;
+        prioritiesRadio.dispatchEvent(new Event('change'));
+    }
+
+    // 4. Activar prioridades clave de materiales de contratos
+    const needsWood = allItems.some(it => it.includes('wood') || it.includes('lumber') || it.includes('plank'));
+    const needsOre = allItems.some(it => it.includes('ore') || it.includes('sand') || it.includes('mineral'));
+
+    if (Array.isArray(priorityOrder)) {
+        priorityOrder.forEach(p => {
+            if (p.target === 'Wood Blocks' && needsWood) p.on = true;
+            if (p.target === 'Mineral Sand' && needsOre) p.on = true;
+            if (p.target === 'season_points' && hasSeason) p.on = true;
+            if (p.target === 'coins') p.on = true;
+        });
+        if (typeof renderPriorities === 'function') {
+            renderPriorities();
+        }
+    }
+
+    // 5. Lanzar el cálculo del mejor plan
+    const optBtn = document.getElementById('optimize-btn');
+    if (optBtn) {
+        optBtn.click();
+    }
+}
