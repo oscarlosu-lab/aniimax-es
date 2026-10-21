@@ -48,9 +48,9 @@ export function getActiveContracts() {
         console.warn('Error al cargar pedidos activos de localStorage:', e);
     }
 
-    // Por defecto inicializamos con 2 pedidos representativos del cliente 1 y 2
+    // Por defecto inicializamos con 2 pedidos representativos (1 regular de harina y 1 de temporada de Bandeja de cosecha)
     const defaultOrder1 = HOME_ORDERS_LIB.find(o => o.id === '3') || HOME_ORDERS_LIB[0]; // Harina de trigo
-    const defaultOrder2 = HOME_ORDERS_LIB.find(o => o.id === '1') || HOME_ORDERS_LIB[1]; // Trigo
+    const defaultOrder2 = HOME_ORDERS_LIB.find(o => o.id === 'season_harvest_platter_2') || HOME_ORDERS_LIB[1]; // Bandeja de cosecha (Temporada)
 
     return [
         {
@@ -265,8 +265,15 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
             }
         }
 
-        // Filtrar pedidos del cliente seleccionado
-        let clientOrders = HOME_ORDERS_LIB.filter(o => o.clientId === selectedClientId);
+        // Filtrar pedidos del cliente seleccionado (admite pedidos de temporada cruzados)
+        let clientOrders = HOME_ORDERS_LIB.filter(o => {
+            if (selectedClientId === 'season') {
+                return o.isSeason === true;
+            }
+            if (o.clientId === selectedClientId) return true;
+            if (o.clientIds && o.clientIds.includes(selectedClientId)) return true;
+            return false;
+        });
 
         if (filterByRv) {
             clientOrders = clientOrders.filter(o => o.minRv <= currentRv && (!o.maxRv || o.maxRv >= currentRv));
@@ -295,14 +302,15 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
                 </div>
             </div>
 
-            <!-- Fila de Pills de los 8 Clientes -->
+            <!-- Fila de Pills de Clientes y Temporada -->
             <div class="client-pills-bar">
-                <span class="pills-label">Clientes de Astra:</span>
+                <span class="pills-label">Clientes de Astra & Evento:</span>
                 <div class="client-pills-wrapper">
                     ${ORDER_CLIENTS.map(c => {
                         const isLocked = filterByRv && (c.minRv || 1) > currentRv;
+                        const isSeasonPill = c.id === 'season' || c.isSeason;
                         return `
-                        <button type="button" class="client-pill ${c.id === selectedClientId ? 'active' : ''} ${isLocked ? 'locked' : ''}" data-client-id="${c.id}" ${isLocked ? 'disabled' : ''} title="${c.category}: ${c.description}${isLocked ? ` · Requiere Casa Rodante RV ${c.minRv}` : ''}">
+                        <button type="button" class="client-pill ${c.id === selectedClientId ? 'active' : ''} ${isLocked ? 'locked' : ''} ${isSeasonPill ? 'season-pill' : ''}" data-client-id="${c.id}" ${isLocked ? 'disabled' : ''} title="${c.category}: ${c.description}${isLocked ? ` · Requiere Casa Rodante RV ${c.minRv}` : ''}">
                             <span class="client-pill-emoji">${c.emoji}</span>
                             <span class="client-pill-name">${c.name}</span>
                             ${isLocked ? `<span class="client-pill-lock">🔒RV${c.minRv}</span>` : ''}
@@ -312,7 +320,7 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
             </div>
 
             <!-- Selector Contextual del Pedido -->
-            <div class="order-selector-box">
+            <div class="order-selector-box ${selectedClient.isSeason ? 'season-box' : ''}">
                 <div class="order-selector-header">
                     <span class="selected-client-info">
                         ${selectedClient.emoji} <strong>${selectedClient.name}</strong> · <small>${selectedClient.category}</small>
@@ -324,7 +332,7 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
 
                 <!-- Buscador Rápido de Producto -->
                 <div class="order-search-row">
-                    <input type="text" id="order-search-input" class="order-search-input" placeholder="🔍 Buscar producto (ej. Pan, Tofu, Lavanda...)" value="${searchQuery}">
+                    <input type="text" id="order-search-input" class="order-search-input" placeholder="🔍 Buscar producto o receta (ej. Bandeja, Olla, Harina, Lavanda...)" value="${searchQuery}">
                 </div>
 
                 <div class="order-picker-row">
@@ -334,8 +342,10 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
                             : clientOrders.map(o => {
                                 const qMeta = QUALITY_TIERS[o.quality] || QUALITY_TIERS[1];
                                 const starsStr = '★'.repeat(o.stars);
+                                const seasonPrefix = o.isSeason ? '🌸 [Temporada] ' : '';
+                                const seasonPointsText = o.isSeason && o.stamps ? ` · 🌸 +${o.stamps} Pts Cosecha` : '';
                                 return `<option value="${o.id}">
-                                    [${qMeta.name} ${starsStr}] ${o.amount}x ${o.name} (🪙 ${o.coins.toLocaleString()} monedas)
+                                    ${seasonPrefix}[${qMeta.name} ${starsStr}] ${o.amount}x ${o.name} (🪙 ${o.coins.toLocaleString()} monedas${seasonPointsText})
                                 </option>`;
                             }).join('')
                         }
@@ -370,10 +380,12 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
                             const cMeta = o.clientMeta || ORDER_CLIENTS.find(c => c.id === o.clientId) || ORDER_CLIENTS[0];
                             const isUrgent = (o.multiplier || 1.0) > 1.0;
                             const totalCoins = Math.round((o.coins || 0) * (o.multiplier || 1.0));
+                            const isSeason = o.isSeason || o.type === 'season';
                             return `
-                                <div class="active-order-card ${isUrgent ? 'urgent' : ''}">
+                                <div class="active-order-card ${isSeason ? 'season' : ''} ${isUrgent ? 'urgent' : ''}">
                                     <div class="order-card-header">
                                         <span class="order-client-tag">${cMeta.emoji} ${cMeta.name}</span>
+                                        ${isSeason ? `<span class="order-season-badge">🌸 Pedido de temporada</span>` : ''}
                                         <span class="order-tier-tag" style="background:${qMeta.bg}; color:${qMeta.color}; border:1px solid ${qMeta.border}">
                                             ${qMeta.name} ${'★'.repeat(o.stars || 2)}
                                         </span>
@@ -386,7 +398,7 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
                                         <div class="order-req-line">
                                             <strong>${o.amount}x ${o.name}</strong>
                                             <span class="order-reward-pill">🪙 +${totalCoins.toLocaleString()}</span>
-                                            ${o.stamps > 0 ? `<span class="order-stamps-pill">🌸 +${o.stamps}</span>` : ''}
+                                            ${o.stamps > 0 ? `<span class="order-stamps-pill ${isSeason ? 'season-pts' : ''}">🌸 +${o.stamps} ${isSeason ? 'Pts Cosecha' : 'Sellos'}</span>` : ''}
                                         </div>
                                         <div class="order-stock-line">
                                             <label>Tengo en almacén:</label>
@@ -436,7 +448,14 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
                 // debounce actualización de lista de opciones
                 const select = container.querySelector('#order-picker-select');
                 if (select) {
-                    let filtered = HOME_ORDERS_LIB.filter(o => o.clientId === selectedClientId);
+                    let filtered = HOME_ORDERS_LIB.filter(o => {
+                        if (selectedClientId === 'season') {
+                            return o.isSeason === true;
+                        }
+                        if (o.clientId === selectedClientId) return true;
+                        if (o.clientIds && o.clientIds.includes(selectedClientId)) return true;
+                        return false;
+                    });
                     if (filterByRv) {
                         filtered = filtered.filter(o => o.minRv <= currentRv && (!o.maxRv || o.maxRv >= currentRv));
                     }
@@ -452,8 +471,10 @@ export function renderContractsConfigUI(container, onContractsChanged, onOptimiz
                         : filtered.map(o => {
                             const qMeta = QUALITY_TIERS[o.quality] || QUALITY_TIERS[1];
                             const starsStr = '★'.repeat(o.stars);
+                            const seasonPrefix = o.isSeason ? '🌸 [Temporada] ' : '';
+                            const seasonPointsText = o.isSeason && o.stamps ? ` · 🌸 +${o.stamps} Pts Cosecha` : '';
                             return `<option value="${o.id}">
-                                [${qMeta.name} ${starsStr}] ${o.amount}x ${o.name} (🪙 ${o.coins.toLocaleString()} monedas)
+                                ${seasonPrefix}[${qMeta.name} ${starsStr}] ${o.amount}x ${o.name} (🪙 ${o.coins.toLocaleString()} monedas${seasonPointsText})
                             </option>`;
                         }).join('');
                 }
@@ -569,7 +590,7 @@ export function renderContractsResultCard(resultContainer, plan, activeOrders = 
             </div>
             ${analysis.totalSeasonStamps > 0 ? `
             <div class="contract-kpi-pill">
-                <span class="kpi-label">Sellos de Temporada</span>
+                <span class="kpi-label">Puntos / Sellos de Temporada</span>
                 <span class="kpi-val text-season">🌸 +${analysis.totalSeasonStamps.toLocaleString()}</span>
             </div>` : ''}
             <div class="contract-kpi-pill">
@@ -584,11 +605,13 @@ export function renderContractsResultCard(resultContainer, plan, activeOrders = 
                 const cMeta = o.clientMeta || ORDER_CLIENTS.find(c => c.id === o.clientId) || ORDER_CLIENTS[0];
                 const pct = o.required > 0 ? Math.min(100, Math.round((o.stock / o.required) * 100)) : 100;
                 const isUrgent = (o.multiplier || 1.0) > 1.0;
+                const isSeason = o.isSeason || o.type === 'season';
 
                 return `
-                    <div class="contract-eval-card ${o.contractAllDone ? 'done' : ''}">
+                    <div class="contract-eval-card ${o.contractAllDone ? 'done' : ''} ${isSeason ? 'season' : ''}">
                         <div class="c-eval-header">
                             <span class="order-client-tag">${cMeta.emoji} ${cMeta.name}</span>
+                            ${isSeason ? `<span class="order-season-badge">🌸 Pedido de temporada</span>` : ''}
                             <span class="order-tier-tag" style="background:${qMeta.bg}; color:${qMeta.color}; border:1px solid ${qMeta.border}">
                                 ${qMeta.name} ${'★'.repeat(o.stars || 2)}
                             </span>
@@ -600,7 +623,7 @@ export function renderContractsResultCard(resultContainer, plan, activeOrders = 
                         </div>
                         <div class="c-eval-rewards">
                             <span>🪙 Recompensa: <b>+${o.rewardCoinsEffective.toLocaleString()} monedas</b></span>
-                            ${o.rewardSeasonStamps > 0 ? `<span>🌸 <b>+${o.rewardSeasonStamps} Sellos</b></span>` : ''}
+                            ${o.rewardSeasonStamps > 0 ? `<span>🌸 <b>+${o.rewardSeasonStamps} ${isSeason ? 'Puntos Cosecha' : 'Sellos'}</b></span>` : ''}
                             <span style="margin-left: auto;">🏭 Fabricado en: <b>${o.facility}</b></span>
                         </div>
                         <div class="c-progress-bar-bg" style="margin-top: 0.35rem;">

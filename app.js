@@ -4556,6 +4556,18 @@ function applyContractsOptimization(contractsToOptimize) {
             seasonCheckbox.checked = true;
             seasonCheckbox.dispatchEvent(new Event('change'));
         }
+
+        // Auto-desbloquear las Notas de Receta de temporada requeridas por los pedidos de evento
+        const seasonNoteNames = ['harvest_platter', 'umbral_pickle', 'umbral_hot_pot', 'umbral_sweet_and_spicy_sauce'];
+        allItems.forEach(item => {
+            if (seasonNoteNames.includes(item)) {
+                unlockedSpecial.add(item);
+                const el = document.querySelector(`input[data-special="${item}"]`);
+                if (el && !el.checked) {
+                    el.checked = true;
+                }
+            }
+        });
     }
 
     // 3. Cambiar a estrategia de Prioridades para enfocar recursos
