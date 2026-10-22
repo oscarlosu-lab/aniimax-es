@@ -17,7 +17,8 @@ import {
     renderContractsConfigUI,
     renderContractsResultCard,
     calculateContractsAnalysis,
-    getActiveContracts
+    getActiveContracts,
+    setContractsRecipeIndex
 } from './contracts-manager.js';
 import { setBilingual, isBilingual } from './i18n.js';
 
@@ -2025,6 +2026,52 @@ function attachSeasonHandlers() {
     });
 }
 
+// Resuelve dinámicamente todo el árbol genealógico de ingredientes de cualquier ítem o pedido.
+function getRequiredIngredientsRecursively(itemKeys) {
+    const required = new Set();
+    const queue = Array.isArray(itemKeys) ? [...itemKeys] : [itemKeys];
+    while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item || required.has(item)) continue;
+        required.add(item);
+        const matches = recipeIndex.filter(r => r.name === item);
+        for (const r of matches) {
+            if (r.ingredients && Array.isArray(r.ingredients)) {
+                for (const ing of r.ingredients) {
+                    if (ing && !required.has(ing)) {
+                        queue.push(ing);
+                    }
+                }
+            }
+        }
+    }
+    return required;
+}
+
+// Identifica los talleres de procesamiento intermedios requeridos por una receta (excluyendo parcelas).
+function getRequiredFacilitiesForRecipe(itemKey) {
+    const facilities = new Set();
+    const visited = new Set();
+    const queue = [itemKey];
+    while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item || visited.has(item)) continue;
+        visited.add(item);
+        const matches = recipeIndex.filter(r => r.name === item);
+        for (const r of matches) {
+            if (r.facility && r.facility !== 'Farmland') {
+                facilities.add(r.facility);
+            }
+            if (r.ingredients && Array.isArray(r.ingredients)) {
+                for (const ing of r.ingredients) {
+                    if (ing && !visited.has(ing)) queue.push(ing);
+                }
+            }
+        }
+    }
+    return facilities;
+}
+
 // Every recipe plans may not use: the player's skips and any special recipe not unlocked.
 function excludedRecipes() {
     const locked = [...SPECIAL_RECIPES, ...SEASON.recipeNotes].map(r => r.name).filter(name => !unlockedSpecial.has(name));
@@ -2033,21 +2080,16 @@ function excludedRecipes() {
     const lesser = best ? ANIIPOD_TIERS.filter(name => name !== best) : [];
     const allExcluded = new Set([...skippedRecipes, ...locked, ...lesser]);
 
-    // PROTECCIÓN CRÍTICA: Nunca excluir recetas requeridas por los pedidos activos del tablón ni sus ingredientes
+    // PROTECCIÓN CRÍTICA: Desbloquear dinámicamente cualquier receta o insumo requerido por los pedidos activos del tablón
     const activeOrders = typeof getActiveContracts === 'function' ? getActiveContracts() : [];
     if (activeOrders && activeOrders.length > 0) {
+        const orderKeys = [];
         activeOrders.forEach(o => {
-            if (o.itemKey) allExcluded.delete(o.itemKey);
-            if (o.items) o.items.forEach(it => allExcluded.delete(it.item));
+            if (o.itemKey) orderKeys.push(o.itemKey);
+            if (o.items) o.items.forEach(it => orderKeys.push(it.item));
         });
-        // Desbloquear también ingredientes intermedios de pedidos y temporada
-        const orderIntermediates = [
-            'moondew_radish', 'waxing_moon_pepper', 'moondew_radish_slices', 'roasted_waxing_moon_pepper',
-            'umbral_sweet_and_spicy_sauce', 'umbral_pickle', 'umbral_hot_pot', 'harvest_platter',
-            'milled_rice', 'rock_candy', 'tofu', 'soy_sauce', 'salted_cherry_blossom', 'sweet_rice_drink',
-            'premium_sweet_rice_wine', 'lemon_incense', 'advanced_lemon_incense', 'rose_incense'
-        ];
-        orderIntermediates.forEach(it => allExcluded.delete(it));
+        const allOrderDependencies = getRequiredIngredientsRecursively(orderKeys);
+        allOrderDependencies.forEach(dep => allExcluded.delete(dep));
     }
 
     return Array.from(allExcluded);
@@ -2088,6 +2130,9 @@ async function loadRecipeIndex() {
         recipeIndex = JSON.parse(await callWorker('get_all_items'))
             .map(r => ({ name: r.name, facility: r.facility, cost: r.cost || 0, seasonSeedCost: r.season_seed_cost || 0, environment: r.environment || null, jobs: r.jobs || [], ingredients: r.raw_materials || [], amounts: r.required_amount || [], yieldAmount: r.yield_amount || 1, byproduct: r.byproduct_item || null, byproductAmount: r.byproduct?.[1] || 0, turns: r.sell_currency === 'none' }))
             .sort((a, b) => a.facility.localeCompare(b.facility) || a.name.localeCompare(b.name));
+        if (typeof setContractsRecipeIndex === 'function') {
+            setContractsRecipeIndex(recipeIndex);
+        }
         renderRecipeOptions();
         renderSkippedRecipes();
     } catch (error) {
@@ -2254,12 +2299,6 @@ const ITEM_NAMES = {
     coins: 'Home Coins',
     wood_block: 'Wood Blocks',
     mineral_sand: 'Mineral Sand',
-    harvest_platter: 'Bandeja de cosecha',
-    umbral_hot_pot: 'Olla caliente sombría',
-    umbral_sweet_and_spicy_sauce: 'Salsa agridulce sombría',
-    umbral_pickle: 'Encurtido sombrío',
-    premium_sweet_rice_wine: 'Vino de arroz dulce prémium',
-    advanced_lemon_incense: 'Incienso avanzado de limón',
     coarse_sifted_ore: 'Coarse-Sifted Ore',
     river_washed_stones: 'River-Washed Stones',
     premium_river_washed_stones: 'Premium River-Washed Stones',
@@ -2511,8 +2550,75 @@ function levelUpInput() {
     const combinedCostMap = new Map();
     const combinedStockMap = new Map();
 
-    // 1. Si la estrategia de subida de nivel está activa, incluir el coste y stock de la RV
-    if (isLvlUp) {
+    if (hasActiveOrders) {
+        // FASE 1: Cumplimiento de pedidos a máxima velocidad sin cuello de botella
+        // Para evitar colisiones en talleres con solo 1 unidad disponible (ej. 1 solo Blazing Stove),
+        // coordinamos pedidos paralelos y secuenciales de forma inteligente.
+        const ownedFacilityCount = fac => isSimpleMode()
+            ? tierCount(simpleSetup(selectedHomeLevel()).facilities[fac])
+            : tierCount(facilityTiers[fac]);
+
+        const singleUnitFacilitiesUsed = new Set();
+        // Ordenar pedidos por urgencia (multiplier descendente)
+        const sortedOrders = [...activeOrders].sort((a, b) => (b.multiplier || 1.0) - (a.multiplier || 1.0));
+
+        sortedOrders.forEach(o => {
+            const itemKey = o.itemKey;
+            if (!itemKey) return;
+            const req = o.amount || 0;
+            const st = o.stock || 0;
+            if (req <= st) return;
+
+            const neededFacilities = getRequiredFacilitiesForRecipe(itemKey);
+            let collides = false;
+            for (const fac of neededFacilities) {
+                const count = ownedFacilityCount(fac);
+                if (count <= 1 && singleUnitFacilitiesUsed.has(fac)) {
+                    collides = true;
+                    break;
+                }
+            }
+
+            if (!collides) {
+                combinedCostMap.set(itemKey, (combinedCostMap.get(itemKey) || 0) + req);
+                if (st > 0) {
+                    combinedStockMap.set(itemKey, (combinedStockMap.get(itemKey) || 0) + st);
+                }
+                for (const fac of neededFacilities) {
+                    singleUnitFacilitiesUsed.add(fac);
+                }
+            }
+        });
+
+        // Si todos los pedidos estaban en conflicto o ya tenían stock y combinedCostMap está vacío, incluir al menos el primer pedido pendiente
+        if (combinedCostMap.size === 0) {
+            for (const o of sortedOrders) {
+                const itemKey = o.itemKey;
+                const req = o.amount || 0;
+                const st = o.stock || 0;
+                if (itemKey && req > st) {
+                    combinedCostMap.set(itemKey, req);
+                    if (st > 0) combinedStockMap.set(itemKey, st);
+                    break;
+                }
+            }
+        }
+
+        // Coordinación de talleres: Para la subida de nivel, solo intervienen el Banco de carpintería
+        // y el Horno de chimenea (madera y minerales). Añadimos una demanda nominal para que ambos talleres
+        // produzcan los materiales de la Casa Rodante al máximo nivel sin diluir la velocidad de los pedidos.
+        if (isLvlUp) {
+            const cost = levelUpCost();
+            if (cost && Array.isArray(cost.items)) {
+                cost.items.forEach(([item]) => {
+                    if (!combinedCostMap.has(item)) {
+                        combinedCostMap.set(item, 0.001);
+                    }
+                });
+            }
+        }
+    } else if (isLvlUp) {
+        // FASE 2: Subida de nivel estándar cuando el tablón de pedidos está libre
         const cost = levelUpCost();
         if (cost && cost.coins > 0) {
             combinedCostMap.set('coins', (combinedCostMap.get('coins') || 0) + cost.coins);
@@ -2528,28 +2634,7 @@ function levelUpInput() {
         }
     }
 
-    // 2. Si hay pedidos activos en el tablón, incluir sus ítems pendientes como objetivos obligatorios
-    if (hasActiveOrders) {
-        activeOrders.forEach(o => {
-            const itemKey = o.itemKey;
-            if (!itemKey) return;
-            const req = o.amount || 0;
-            const st = o.stock || 0;
-            if (req > 0) {
-                combinedCostMap.set(itemKey, (combinedCostMap.get(itemKey) || 0) + req);
-                if (st > 0) {
-                    combinedStockMap.set(itemKey, (combinedStockMap.get(itemKey) || 0) + st);
-                }
-            }
-        });
-    }
-
     if (combinedCostMap.size === 0) return null;
-
-    // Si no había monedas en el coste, fijar una base de monedas para que el solver optimice ganancias en el tiempo restante
-    if (!combinedCostMap.has('coins')) {
-        combinedCostMap.set('coins', 1000);
-    }
 
     return {
         cost: Array.from(combinedCostMap.entries()),
@@ -4648,8 +4733,8 @@ function applyContractsOptimization(contractsToOptimize) {
             seasonCheckbox.dispatchEvent(new Event('change'));
         }
 
-        // Auto-desbloquear las Notas de Receta de temporada requeridas por los pedidos de evento
-        const seasonNoteNames = ['harvest_platter', 'umbral_pickle', 'umbral_hot_pot', 'umbral_sweet_and_spicy_sauce'];
+        // Auto-desbloquear dinámicamente las Notas de Receta de temporada requeridas por los pedidos de evento
+        const seasonNoteNames = (SEASON && Array.isArray(SEASON.recipeNotes)) ? SEASON.recipeNotes.map(r => r.name) : [];
         allItems.forEach(item => {
             if (seasonNoteNames.includes(item)) {
                 unlockedSpecial.add(item);

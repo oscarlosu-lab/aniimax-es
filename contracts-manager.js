@@ -48,30 +48,7 @@ export function getActiveContracts() {
         console.warn('Error al cargar pedidos activos de localStorage:', e);
     }
 
-    // Por defecto inicializamos con 2 pedidos representativos (1 regular de harina y 1 de temporada de Bandeja de cosecha)
-    const defaultOrder1 = HOME_ORDERS_LIB.find(o => o.id === '3') || HOME_ORDERS_LIB[0]; // Harina de trigo
-    const defaultOrder2 = HOME_ORDERS_LIB.find(o => o.id === 'season_harvest_platter_2') || HOME_ORDERS_LIB[1]; // Bandeja de cosecha (Temporada)
-
-    return [
-        {
-            ...defaultOrder1,
-            items: [{ item: defaultOrder1.itemKey, amount: defaultOrder1.amount, name: defaultOrder1.name }],
-            type: defaultOrder1.isSeason ? 'season' : 'daily',
-            multiplier: 2.0,
-            badge: '🔥 Urgente x2.0',
-            stock: 0,
-            clientMeta: ORDER_CLIENTS.find(c => c.id === defaultOrder1.clientId)
-        },
-        {
-            ...defaultOrder2,
-            items: [{ item: defaultOrder2.itemKey, amount: defaultOrder2.amount, name: defaultOrder2.name }],
-            type: defaultOrder2.isSeason ? 'season' : 'daily',
-            multiplier: 1.0,
-            badge: 'Normal x1.0',
-            stock: 0,
-            clientMeta: ORDER_CLIENTS.find(c => c.id === defaultOrder2.clientId)
-        }
-    ];
+    return [];
 }
 
 /**
@@ -99,56 +76,25 @@ function formatHoursMins(seconds) {
     return `${mins}m`;
 }
 
-const KNOWN_ORDER_FACILITIES = {
-    harvest_platter: 'Crafting Table',
-    umbral_hot_pot: 'Blazing Stove',
-    umbral_sweet_and_spicy_sauce: 'Simmering Pot',
-    umbral_pickle: 'Pickling Jar',
-    moondew_radish_slices: 'Blazing Stove',
-    roasted_waxing_moon_pepper: 'Claw Game Cooker',
-    premium_sweet_rice_wine: 'Pickling Jar',
-    sweet_rice_drink: 'Pickling Jar',
-    candied_strawberries: 'Pickling Jar',
-    candied_orange_flower: 'Pickling Jar',
-    soy_sauce: 'Pickling Jar',
-    salted_cherry_blossom: 'Pickling Jar',
-    salted_lemon: 'Pickling Jar',
-    premium_salted_lemon: 'Pickling Jar',
-    rice_vinegar: 'Pickling Jar',
-    cider_vinegar: 'Pickling Jar',
-    advanced_lemon_incense: 'Phonolfactory Table',
-    lemon_incense: 'Phonolfactory Table',
-    rose_incense: 'Phonolfactory Table',
-    cherry_incense: 'Phonolfactory Table',
-    lavender_incense: 'Phonolfactory Table',
-    bamboo_joss_stick: 'Phonolfactory Table',
-    herbal_ginseng_aroma: 'Phonolfactory Table',
-    soap: 'Phonolfactory Table',
-    premium_soap: 'Phonolfactory Table',
-    orange_flower_incense: 'Phonolfactory Table',
-    mixed_perfume: 'Phonolfactory Table',
-    lotion: 'Phonolfactory Table',
-    premium_mixed_perfume: 'Phonolfactory Table',
-    soy_sauce_fried_rice: 'Blazing Stove',
-    creamy_potato_soup: 'Blazing Stove',
-    premium_potato_soup: 'Blazing Stove',
-    cherry_blossom_rice_ball: 'Blazing Stove',
-    tanghulu: 'Blazing Stove',
-    soy_sauce_tofu: 'Blazing Stove',
-    sugar_roasted_chestnuts: 'Blazing Stove',
-    steamed_vermicelli_roll: 'Blazing Stove',
-    ginseng_chestnut_cake: 'Blazing Stove',
-    walnut_cake: 'Blazing Stove',
-    jello: 'Blazing Stove',
-    premium_jello: 'Blazing Stove',
-    strawberry_candy: 'Blazing Stove',
-    rich_grape_compote: 'Blazing Stove',
-    strawberry_cream_puff: 'Blazing Stove',
-    cranberry_chocolate: 'Blazing Stove',
-    refined_flour: 'Carousel Mill',
-    milled_rice: 'Carousel Mill',
-    tofu: 'Simmering Pot'
-};
+let currentRecipeIndex = [];
+
+/**
+ * Recibe el catálogo dinámico de recetas oficiales del motor WASM.
+ */
+export function setContractsRecipeIndex(index) {
+    if (Array.isArray(index)) {
+        currentRecipeIndex = index;
+    }
+}
+
+/**
+ * Consulta dinámicamente en el motor en qué taller se fabrica cualquier ítem del juego.
+ */
+export function getFacilityForRecipe(itemKey) {
+    if (!itemKey) return translate('Taller correspondiente');
+    const r = currentRecipeIndex.find(rec => rec.name === itemKey);
+    return r && r.facility ? translate(r.facility) : translate('Taller correspondiente');
+}
 
 /**
  * Calcula el análisis de cumplimiento de pedidos a partir de un plan de producción.
@@ -246,8 +192,8 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
         const facility = itemFacilities.get(nKey1) ||
                          itemFacilities.get(nKey2) ||
                          itemFacilities.get(nKey3) ||
-                         KNOWN_ORDER_FACILITIES[order.itemKey] ||
-                         (order.facility ? order.facility : 'Taller especializado');
+                         getFacilityForRecipe(order.itemKey) ||
+                         (order.facility ? order.facility : translate('Taller especializado'));
         allContractFacilities.add(facility);
 
         const required = order.amount || 0;
@@ -277,8 +223,12 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
             status = 'in_progress';
             secondsNeeded = pending / unitsPerSec;
         } else {
-            status = 'no_production';
-            secondsNeeded = Infinity;
+            // Si el taller está ocupado en la fase actual por otro pedido prioritario, calcular tiempo secuencial estimado
+            const rec = currentRecipeIndex.find(r => r.name === order.itemKey);
+            const cycleSec = rec && rec.production_time ? rec.production_time : 300;
+            const runSec = (pending / (rec?.yieldAmount || 1)) * cycleSec;
+            secondsNeeded = (Number.isFinite(maxCompletionSeconds) ? maxCompletionSeconds : 0) + runSec;
+            status = 'queued';
         }
 
         if (secondsNeeded > maxCompletionSeconds && Number.isFinite(secondsNeeded)) {
@@ -286,7 +236,10 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
         }
 
         const isDone = status === 'done';
-        const etaText = isDone ? '✅ Listo para entregar' : status === 'in_progress' ? formatHoursMins(secondsNeeded) : '⚠️ Sin producción activa';
+        const etaText = isDone ? '✅ Listo para entregar' :
+                        status === 'in_progress' ? formatHoursMins(secondsNeeded) :
+                        status === 'queued' ? `⏳ En cola (${formatHoursMins(secondsNeeded)})` :
+                        '⚠️ Sin producción activa';
 
         return {
             ...order,
