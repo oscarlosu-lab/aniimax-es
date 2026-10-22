@@ -2235,7 +2235,12 @@ const ITEM_NAMES = {
     coins: 'Home Coins',
     wood_block: 'Wood Blocks',
     mineral_sand: 'Mineral Sand',
-    umbral_sweet_and_spicy_sauce: 'Umbral Sweet and Spicy Sauce',
+    harvest_platter: 'Bandeja de cosecha',
+    umbral_hot_pot: 'Olla caliente sombría',
+    umbral_sweet_and_spicy_sauce: 'Salsa agridulce sombría',
+    umbral_pickle: 'Encurtido sombrío',
+    premium_sweet_rice_wine: 'Vino de arroz dulce prémium',
+    advanced_lemon_incense: 'Incienso avanzado de limón',
     coarse_sifted_ore: 'Coarse-Sifted Ore',
     river_washed_stones: 'River-Washed Stones',
     premium_river_washed_stones: 'Premium River-Washed Stones',
@@ -2478,11 +2483,58 @@ function attachStrategyHandlers() {
 
 // The level-up the solver should plan for (see `JsPlanInput::level_up` in wasm.rs), or null.
 function levelUpInput() {
-    if (!isLevelUpStrategy() || levelUpUnavailable()) return null;
-    const cost = levelUpCost();
+    const activeOrders = typeof getActiveContracts === 'function' ? getActiveContracts() : [];
+    const hasActiveOrders = activeOrders && activeOrders.length > 0;
+    const isLvlUp = isLevelUpStrategy() && !levelUpUnavailable();
+
+    if (!isLvlUp && !hasActiveOrders) return null;
+
+    const combinedCostMap = new Map();
+    const combinedStockMap = new Map();
+
+    // 1. Si la estrategia de subida de nivel está activa, incluir el coste y stock de la RV
+    if (isLvlUp) {
+        const cost = levelUpCost();
+        if (cost && cost.coins > 0) {
+            combinedCostMap.set('coins', (combinedCostMap.get('coins') || 0) + cost.coins);
+        }
+        if (cost && Array.isArray(cost.items)) {
+            cost.items.forEach(([item, amount]) => {
+                combinedCostMap.set(item, (combinedCostMap.get(item) || 0) + amount);
+            });
+            stockNames(cost).forEach(name => {
+                const st = stockAmount(name);
+                if (st > 0) combinedStockMap.set(name, st);
+            });
+        }
+    }
+
+    // 2. Si hay pedidos activos en el tablón, incluir sus ítems pendientes como objetivos obligatorios
+    if (hasActiveOrders) {
+        activeOrders.forEach(o => {
+            const itemKey = o.itemKey;
+            if (!itemKey) return;
+            const req = o.amount || 0;
+            const st = o.stock || 0;
+            if (req > 0) {
+                combinedCostMap.set(itemKey, (combinedCostMap.get(itemKey) || 0) + req);
+                if (st > 0) {
+                    combinedStockMap.set(itemKey, (combinedStockMap.get(itemKey) || 0) + st);
+                }
+            }
+        });
+    }
+
+    if (combinedCostMap.size === 0) return null;
+
+    // Si no había monedas en el coste, fijar una base de monedas para que el solver optimice ganancias en el tiempo restante
+    if (!combinedCostMap.has('coins')) {
+        combinedCostMap.set('coins', 1000);
+    }
+
     return {
-        cost: [['coins', cost.coins], ...cost.items],
-        stock: stockNames(cost).filter(name => stockAmount(name) > 0).map(name => [name, stockAmount(name)]),
+        cost: Array.from(combinedCostMap.entries()),
+        stock: Array.from(combinedStockMap.entries())
     };
 }
 
@@ -2525,9 +2577,18 @@ function renderLevelUp(plan) {
     const label = document.getElementById('level-up-label');
     const time = document.getElementById('level-up-time');
     const lines = document.getElementById('level-up-lines');
-    label.textContent = `SUBIDA DE NIVEL CASA RODANTE ${context.target}`;
+    const activeOrders = typeof getActiveContracts === 'function' ? getActiveContracts() : [];
+    const hasOrders = activeOrders && activeOrders.length > 0;
+    if (hasOrders && context.target) {
+        label.textContent = `FASE 1: PEDIDOS DEL TABLÓN + SUBIDA CASA RODANTE ${context.target}`;
+    } else if (hasOrders) {
+        label.textContent = `FASE 1: CUMPLIMIENTO DE PEDIDOS DEL TABLÓN`;
+    } else {
+        label.textContent = `SUBIDA DE NIVEL CASA RODANTE ${context.target || ''}`;
+    }
+
     const report = plan.level_up;
-    if (context.unavailable) {
+    if (context.unavailable && !hasOrders) {
         time.textContent = '-';
         lines.innerHTML = `<p class="level-up-note">${context.unavailable} Este plan busca obtener el máximo de Monedas del Hogar.</p>`;
         return;
@@ -2575,7 +2636,11 @@ function renderLevelUp(plan) {
             <thead><tr><th>Coste</th><th>Necesario</th><th>Disponible</th><th id="level-up-rate-head"></th><th>Listo en</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        ${coinsNote}`;
+        ${coinsNote}
+        ${hasOrders ? `
+        <div class="level-up-phase-note" style="margin-top: 0.75rem; padding: 0.6rem 0.8rem; background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; font-size: 0.85rem; color: #cbd5e1;">
+            <strong>🔄 Conmutación a Fase 2:</strong> Al completar los pedidos, las máquinas se liberan para cubrir la subida de nivel y maximizar pasivamente las Monedas del Hogar.
+        </div>` : ''}`;
     document.getElementById('level-up-rate-head').appendChild(select);
     rateBlock.style.display = 'none';
 }
@@ -3950,9 +4015,9 @@ async function runFindPlan() {
         const input = getPlanInputValues();
         lastPlanInput = input;
         planContext = {
-            levelUp: isLevelUpStrategy(),
-            target: levelUpTarget(),
-            unavailable: levelUpUnavailable(),
+            levelUp: isLevelUpStrategy() || (input.level_up !== null),
+            target: isLevelUpStrategy() ? levelUpTarget() : null,
+            unavailable: isLevelUpStrategy() ? levelUpUnavailable() : null,
             ready: !!(input.level_up && input.level_up.cost.every(([name, need]) => stockAmount(name) >= need)),
             aniipod: wantsAniipods() ? bestAniipod() : null,
             hasPolisher: (input.facilities['Dance Pad Polisher'] || []).some(t => t.count > 0),
@@ -4570,21 +4635,16 @@ function applyContractsOptimization(contractsToOptimize) {
         });
     }
 
-    // 3. Cambiar a estrategia de Prioridades para enfocar recursos
-    const prioritiesRadio = document.getElementById('strategy-priorities');
-    if (prioritiesRadio && !prioritiesRadio.checked) {
-        prioritiesRadio.checked = true;
-        prioritiesRadio.dispatchEvent(new Event('change'));
+    // 3. Activar estrategia de Subida de Nivel / Pedidos para resolver la producción obligatoria de pedidos y subida de nivel
+    const levelUpRadio = document.getElementById('strategy-level-up');
+    if (levelUpRadio && !levelUpRadio.checked) {
+        levelUpRadio.checked = true;
+        levelUpRadio.dispatchEvent(new Event('change'));
     }
 
-    // 4. Activar prioridades clave de materiales de contratos
-    const needsWood = allItems.some(it => it.includes('wood') || it.includes('lumber') || it.includes('plank'));
-    const needsOre = allItems.some(it => it.includes('ore') || it.includes('sand') || it.includes('mineral'));
-
+    // 4. Asegurar prioridades clave para la fase de maximización continua
     if (Array.isArray(priorityOrder)) {
         priorityOrder.forEach(p => {
-            if (p.target === 'Wood Blocks' && needsWood) p.on = true;
-            if (p.target === 'Mineral Sand' && needsOre) p.on = true;
             if (p.target === 'season_points' && hasSeason) p.on = true;
             if (p.target === 'coins') p.on = true;
         });

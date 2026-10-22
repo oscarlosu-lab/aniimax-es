@@ -99,6 +99,57 @@ function formatHoursMins(seconds) {
     return `${mins}m`;
 }
 
+const KNOWN_ORDER_FACILITIES = {
+    harvest_platter: 'Crafting Table',
+    umbral_hot_pot: 'Blazing Stove',
+    umbral_sweet_and_spicy_sauce: 'Simmering Pot',
+    umbral_pickle: 'Pickling Jar',
+    moondew_radish_slices: 'Blazing Stove',
+    roasted_waxing_moon_pepper: 'Claw Game Cooker',
+    premium_sweet_rice_wine: 'Pickling Jar',
+    sweet_rice_drink: 'Pickling Jar',
+    candied_strawberries: 'Pickling Jar',
+    candied_orange_flower: 'Pickling Jar',
+    soy_sauce: 'Pickling Jar',
+    salted_cherry_blossom: 'Pickling Jar',
+    salted_lemon: 'Pickling Jar',
+    premium_salted_lemon: 'Pickling Jar',
+    rice_vinegar: 'Pickling Jar',
+    cider_vinegar: 'Pickling Jar',
+    advanced_lemon_incense: 'Phonolfactory Table',
+    lemon_incense: 'Phonolfactory Table',
+    rose_incense: 'Phonolfactory Table',
+    cherry_incense: 'Phonolfactory Table',
+    lavender_incense: 'Phonolfactory Table',
+    bamboo_joss_stick: 'Phonolfactory Table',
+    herbal_ginseng_aroma: 'Phonolfactory Table',
+    soap: 'Phonolfactory Table',
+    premium_soap: 'Phonolfactory Table',
+    orange_flower_incense: 'Phonolfactory Table',
+    mixed_perfume: 'Phonolfactory Table',
+    lotion: 'Phonolfactory Table',
+    premium_mixed_perfume: 'Phonolfactory Table',
+    soy_sauce_fried_rice: 'Blazing Stove',
+    creamy_potato_soup: 'Blazing Stove',
+    premium_potato_soup: 'Blazing Stove',
+    cherry_blossom_rice_ball: 'Blazing Stove',
+    tanghulu: 'Blazing Stove',
+    soy_sauce_tofu: 'Blazing Stove',
+    sugar_roasted_chestnuts: 'Blazing Stove',
+    steamed_vermicelli_roll: 'Blazing Stove',
+    ginseng_chestnut_cake: 'Blazing Stove',
+    walnut_cake: 'Blazing Stove',
+    jello: 'Blazing Stove',
+    premium_jello: 'Blazing Stove',
+    strawberry_candy: 'Blazing Stove',
+    rich_grape_compote: 'Blazing Stove',
+    strawberry_cream_puff: 'Blazing Stove',
+    cranberry_chocolate: 'Blazing Stove',
+    refined_flour: 'Carousel Mill',
+    milled_rice: 'Carousel Mill',
+    tofu: 'Simmering Pot'
+};
+
 /**
  * Calcula el análisis de cumplimiento de pedidos a partir de un plan de producción.
  */
@@ -124,6 +175,7 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
     // Mapear tasas de producción del plan (unidades/segundo)
     const productionRates = new Map();
     const itemFacilities = new Map();
+    const reqSecondsMap = new Map();
 
     function addRate(name, rate, fac) {
         if (!name) return;
@@ -137,6 +189,21 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
         }
     }
 
+    // 0. Si el plan incluye cálculo de subida de nivel / requerimientos exactos de pedidos
+    if (plan && plan.level_up && Array.isArray(plan.level_up.requirements)) {
+        plan.level_up.requirements.forEach(req => {
+            if (req.name) {
+                const nKey = norm(req.name);
+                if (req.per_second > 0) {
+                    addRate(req.name, req.per_second);
+                }
+                if (req.seconds !== null && req.seconds !== undefined) {
+                    reqSecondsMap.set(nKey, req.seconds);
+                }
+            }
+        });
+    }
+
     // 1. Productos finales vendidos
     if (plan && plan.income_streams) {
         plan.income_streams.forEach(stream => {
@@ -148,7 +215,8 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
     if (plan && plan.coin_items) {
         plan.coin_items.forEach(step => {
             if (step.item_name && step.cycle_time && step.cycle_time > 0 && step.facility_count > 0) {
-                const rate = step.facility_count / step.cycle_time;
+                const units = step.busy_units !== null && step.busy_units !== undefined ? step.busy_units : step.facility_count;
+                const rate = units / step.cycle_time;
                 addRate(step.item_name, rate, step.facility);
             }
         });
@@ -171,10 +239,15 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
         const itemKey = order.itemKey || '';
         allContractItems.add(itemKey);
 
-        const facility = itemFacilities.get(norm(order.itemKey)) ||
-                         itemFacilities.get(norm(order.nameEn)) ||
-                         itemFacilities.get(norm(order.name)) ||
-                         'Instalación correspondiente';
+        const nKey1 = norm(order.itemKey);
+        const nKey2 = norm(order.nameEn);
+        const nKey3 = norm(order.name);
+
+        const facility = itemFacilities.get(nKey1) ||
+                         itemFacilities.get(nKey2) ||
+                         itemFacilities.get(nKey3) ||
+                         KNOWN_ORDER_FACILITIES[order.itemKey] ||
+                         (order.facility ? order.facility : 'Taller especializado');
         allContractFacilities.add(facility);
 
         const required = order.amount || 0;
@@ -182,17 +255,24 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
         const pending = Math.max(0, required - stock);
 
         // Buscar tasa por itemKey, nameEn o name normalizados
-        let unitsPerSec = productionRates.get(norm(order.itemKey)) ||
-                          productionRates.get(norm(order.nameEn)) ||
-                          productionRates.get(norm(order.name)) || 0;
+        let unitsPerSec = productionRates.get(nKey1) ||
+                          productionRates.get(nKey2) ||
+                          productionRates.get(nKey3) || 0;
         const unitsPerHour = unitsPerSec * 3600;
 
         let secondsNeeded = 0;
         let status = 'done'; // done, in_progress, no_production
 
+        const solverSec = reqSecondsMap.has(nKey1) ? reqSecondsMap.get(nKey1) :
+                          reqSecondsMap.has(nKey2) ? reqSecondsMap.get(nKey2) :
+                          reqSecondsMap.has(nKey3) ? reqSecondsMap.get(nKey3) : null;
+
         if (pending <= 0) {
             status = 'done';
             secondsNeeded = 0;
+        } else if (solverSec !== null && solverSec !== undefined) {
+            secondsNeeded = solverSec;
+            status = secondsNeeded === 0 ? 'done' : 'in_progress';
         } else if (unitsPerSec > 0) {
             status = 'in_progress';
             secondsNeeded = pending / unitsPerSec;
@@ -201,7 +281,7 @@ export function calculateContractsAnalysis(plan, activeOrders = getActiveContrac
             secondsNeeded = Infinity;
         }
 
-        if (secondsNeeded > maxCompletionSeconds) {
+        if (secondsNeeded > maxCompletionSeconds && Number.isFinite(secondsNeeded)) {
             maxCompletionSeconds = secondsNeeded;
         }
 
@@ -577,10 +657,36 @@ export function renderContractsResultCard(resultContainer, plan, activeOrders = 
 
     resultContainer.innerHTML = `
         <div class="card-head">
-            <h3>📜 Cumplimiento y Ganancias de Pedidos Diarios</h3>
+            <h3>📋 Plan de Cumplimiento: 2 Fases Coordinadas</h3>
             <span class="badge ${analysis.allDone ? 'badge-success' : 'badge-warning'}">
-                ${analysis.allDone ? '✅ Todos listos para entregar' : `⏳ ETA Máximo: ${analysis.maxCompletionEtaFormatted}`}
+                ${analysis.allDone ? '✅ Fase 1 Lista para Entrega' : `⏳ Fase 1 en Curso · ETA: ${analysis.maxCompletionEtaFormatted}`}
             </span>
+        </div>
+
+        <div class="plan-phases-roadmap">
+            <div class="phase-step active">
+                <div class="phase-step-badge">FASE 1 · PEDIDOS ACTIVOS</div>
+                <div class="phase-step-title">Fabricación y Entrega del Tablón</div>
+                <div class="phase-step-desc">
+                    Producción prioritaria obligatoria de los <b>${analysis.contracts.length} pedidos</b>. 
+                    Cobro inmediato de <b class="text-gold">🪙 +${analysis.totalCoins.toLocaleString()} monedas</b>${analysis.totalSeasonStamps > 0 ? ` y <b class="text-season">🌸 +${analysis.totalSeasonStamps.toLocaleString()} sellos</b>` : ''}.
+                </div>
+                <div class="phase-step-meta">
+                    <span>⏱️ ETA Fase 1: <b>${analysis.maxCompletionEtaFormatted}</b></span>
+                    <span>📦 Entregas listas: <b>${analysis.contracts.filter(c => c.contractAllDone).length}/${analysis.contracts.length}</b></span>
+                </div>
+            </div>
+            <div class="phase-step-arrow">➔</div>
+            <div class="phase-step next">
+                <div class="phase-step-badge">FASE 2 · CONTINUA</div>
+                <div class="phase-step-title">Subida de Nivel y Dinero Pasivo</div>
+                <div class="phase-step-desc">
+                    Al entregar los pedidos en <b>${analysis.maxCompletionEtaFormatted}</b>, las máquinas se liberan para cubrir la subida de Casa Rodante y maximizar la ganancia constante de Monedas del Hogar.
+                </div>
+                <div class="phase-step-meta">
+                    <span>💰 Inyección de fondos: <b>+${analysis.totalCoins.toLocaleString()} monedas ganadas</b></span>
+                </div>
+            </div>
         </div>
 
         <div class="contracts-kpi-summary">
@@ -590,12 +696,16 @@ export function renderContractsResultCard(resultContainer, plan, activeOrders = 
             </div>
             ${analysis.totalSeasonStamps > 0 ? `
             <div class="contract-kpi-pill">
-                <span class="kpi-label">Puntos / Sellos de Temporada</span>
+                <span class="kpi-label">Puntos / Sellos Temporada</span>
                 <span class="kpi-val text-season">🌸 +${analysis.totalSeasonStamps.toLocaleString()}</span>
             </div>` : ''}
             <div class="contract-kpi-pill">
                 <span class="kpi-label">Pedidos en Tablón</span>
                 <span class="kpi-val">${analysis.contracts.length} activos</span>
+            </div>
+            <div class="contract-kpi-pill">
+                <span class="kpi-label">Tiempo de Entrega</span>
+                <span class="kpi-val text-amber">${analysis.maxCompletionEtaFormatted}</span>
             </div>
         </div>
 
@@ -631,7 +741,7 @@ export function renderContractsResultCard(resultContainer, plan, activeOrders = 
                         </div>
                         <div class="c-eval-stats">
                             <span>Inventario: ${o.stock} / ${o.required} (Faltan: ${o.pending})</span>
-                            <span>Producción base: ${o.unitsPerHour > 0 ? `+${o.unitsPerHour.toFixed(1)}/h` : '0/h'}</span>
+                            <span>Producción activa: ${o.unitsPerHour > 0 ? `+${o.unitsPerHour.toFixed(1)}/h` : '0/h'}</span>
                         </div>
                     </div>
                 `;
