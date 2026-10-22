@@ -542,14 +542,32 @@ function attachAutoSave() {
     });
 }
 
-function clearSavedInputs() {
+async function resetAllUserData() {
+    const msg = translate('¿Deseas restablecer todos los datos guardados y limpiar la caché? Esto reiniciará tus instalaciones, pedidos del tablón y preferencias al estado inicial.');
+    if (!window.confirm(msg)) return;
+
     try {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.clear();
+        sessionStorage.clear();
     } catch (e) {
-        console.warn('Could not clear saved inputs from localStorage:', e);
+        console.warn('Could not clear storage:', e);
     }
+
+    if ('caches' in window) {
+        try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        } catch (e) {
+            console.warn('Could not clear caches:', e);
+        }
+    }
+
     clearShareHash();
-    window.location.reload();
+    window.location.href = window.location.pathname;
+}
+
+function clearSavedInputs() {
+    return resetAllUserData();
 }
 
 // Initialize the worker and its wasm module.
@@ -4546,7 +4564,8 @@ async function initApp() {
     });
 
     document.getElementById('optimize-btn').addEventListener('click', runFindPlan);
-    document.getElementById('clear-saved-btn').addEventListener('click', clearSavedInputs);
+    document.getElementById('clear-saved-btn').addEventListener('click', resetAllUserData);
+    document.getElementById('reset-all-btn')?.addEventListener('click', resetAllUserData);
     document.getElementById('share-config-btn').addEventListener('click', shareCurrentConfig);
     if (sharedData) document.getElementById('share-config-status').textContent = 'Shared setup loaded. Your saved setup is kept until you edit this one.';
     document.getElementById('rate-unit').addEventListener('change', () => {

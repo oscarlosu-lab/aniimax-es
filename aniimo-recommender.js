@@ -587,43 +587,77 @@ export function renderRecommenderUI(recommendationData, containerEl, onUpdateOpt
         ? `⚠️ Supera por ${totalAssigned - maxSlots} el cupo de Casa rodante (máx. ${maxSlots})`
         : `✔ Capacidad óptima (${freeSlots} slots libres para transporte o reservas)`;
 
+    let isRecommenderExpanded = false;
+    try {
+        isRecommenderExpanded = localStorage.getItem('aniimax_recommender_expanded') === 'true';
+    } catch (_) {}
+
     containerEl.innerHTML = `
         <div class="recommender-container">
-            <div class="recommender-header-bar">
+            <button type="button" class="recommender-collapse-toggle" id="recommender-toggle-btn" aria-expanded="${isRecommenderExpanded}">
                 <div class="recommender-title-block">
-                    <h3 class="recommender-title">✨ Aniimos recomendados para este plan</h3>
-                    <p class="recommender-subtitle">Criaturas óptimas del datamine oficial seleccionadas según las necesidades de producción, con opciones alternativas si no dispones de ellos.</p>
+                    <div class="recommender-title-row">
+                        <span class="chevron" aria-hidden="true"></span>
+                        <h3 class="recommender-title">✨ Aniimos recomendados para este plan</h3>
+                    </div>
+                    <p class="recommender-subtitle">Criaturas óptimas del datamine oficial (${recommendations.length} recomendadas). Haz clic para ${isRecommenderExpanded ? 'plegar' : 'desplegar'}.</p>
                 </div>
-                <div class="recommender-stats-badge ${slotsClass}">
-                    <strong>${totalAssigned}</strong> / ${maxSlots} slots usados
-                    <span class="recommender-free-slots">(${freeSlots} libres)</span>
+                <div class="recommender-header-right">
+                    <div class="recommender-stats-badge ${slotsClass}">
+                        <strong>${totalAssigned}</strong> / ${maxSlots} slots usados
+                        <span class="recommender-free-slots">(${freeSlots} libres)</span>
+                    </div>
+                    <span class="recommender-expand-pill">${isRecommenderExpanded ? '▲ Plegar' : '▼ Desplegar'}</span>
                 </div>
-            </div>
+            </button>
 
-            <div class="recommender-status-bar ${slotsClass}">
-                ${statusNote}
-            </div>
-
-            <div class="recommender-toolbar">
-                <label class="recommender-toggle-label">
-                    <input type="checkbox" id="recommender-prismana-toggle" ${allowPrismana ? 'checked' : ''}>
-                    <span>Formas de Prismana (máxima eficiencia Lv.4)</span>
-                </label>
-                <label class="recommender-toggle-label">
-                    <input type="checkbox" id="recommender-only-wild-toggle" ${onlyWild ? 'checked' : ''}>
-                    <span>🌿 Priorizar Aniimos salvajes (fáciles de capturar)</span>
-                </label>
-                <div class="recommender-mbti-toolbar-pill" title="El algoritmo calcula el perfil MBTI ideal y las personalidades que otorgan +20% de velocidad a cada criatura en su instalación">
-                    <span>🧬 Personalidad MBTI (+20% vel) Activa</span>
+            <div class="recommender-collapsible-content" id="recommender-collapsible-body" ${isRecommenderExpanded ? '' : 'hidden'}>
+                <div class="recommender-status-bar ${slotsClass}">
+                    ${statusNote}
                 </div>
-                <button type="button" class="button small" id="recommender-copy-btn">📋 Copiar lista completa</button>
-            </div>
 
-            <div class="recommender-grid">
-                ${cardsHtml}
+                <div class="recommender-toolbar">
+                    <label class="recommender-toggle-label">
+                        <input type="checkbox" id="recommender-prismana-toggle" ${allowPrismana ? 'checked' : ''}>
+                        <span>Formas de Prismana (máxima eficiencia Lv.4)</span>
+                    </label>
+                    <label class="recommender-toggle-label">
+                        <input type="checkbox" id="recommender-only-wild-toggle" ${onlyWild ? 'checked' : ''}>
+                        <span>🌿 Priorizar Aniimos salvajes (fáciles de capturar)</span>
+                    </label>
+                    <div class="recommender-mbti-toolbar-pill" title="El algoritmo calcula el perfil MBTI ideal y las personalidades que otorgan +20% de velocidad a cada criatura en su instalación">
+                        <span>🧬 Personalidad MBTI (+20% vel) Activa</span>
+                    </div>
+                    <button type="button" class="button small" id="recommender-copy-btn">📋 Copiar lista completa</button>
+                </div>
+
+                <div class="recommender-grid">
+                    ${cardsHtml}
+                </div>
             </div>
         </div>
     `;
+
+    // Toggle para desplegar/plegar panel
+    const toggleBtn = containerEl.querySelector('#recommender-toggle-btn');
+    const collapsibleBody = containerEl.querySelector('#recommender-collapsible-body');
+    const expandPill = containerEl.querySelector('.recommender-expand-pill');
+    const subtitleEl = containerEl.querySelector('.recommender-subtitle');
+
+    if (toggleBtn && collapsibleBody) {
+        toggleBtn.addEventListener('click', () => {
+            isRecommenderExpanded = !isRecommenderExpanded;
+            try { localStorage.setItem('aniimax_recommender_expanded', isRecommenderExpanded); } catch (_) {}
+            toggleBtn.setAttribute('aria-expanded', String(isRecommenderExpanded));
+            collapsibleBody.hidden = !isRecommenderExpanded;
+            if (expandPill) {
+                expandPill.textContent = isRecommenderExpanded ? '▲ Plegar' : '▼ Desplegar';
+            }
+            if (subtitleEl) {
+                subtitleEl.textContent = `Criaturas óptimas del datamine oficial (${recommendations.length} recomendadas). Haz clic para ${isRecommenderExpanded ? 'plegar' : 'desplegar'}.`;
+            }
+        });
+    }
 
     // Eventos interactivos
     const prismanaToggle = containerEl.querySelector('#recommender-prismana-toggle');
