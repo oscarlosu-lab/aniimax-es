@@ -2031,7 +2031,26 @@ function excludedRecipes() {
     // Going for Aniipods means the best tier only; the others would be cheaper but catch worse.
     const best = wantsAniipods() ? bestAniipod() : null;
     const lesser = best ? ANIIPOD_TIERS.filter(name => name !== best) : [];
-    return [...new Set([...skippedRecipes, ...locked, ...lesser])];
+    const allExcluded = new Set([...skippedRecipes, ...locked, ...lesser]);
+
+    // PROTECCIÓN CRÍTICA: Nunca excluir recetas requeridas por los pedidos activos del tablón ni sus ingredientes
+    const activeOrders = typeof getActiveContracts === 'function' ? getActiveContracts() : [];
+    if (activeOrders && activeOrders.length > 0) {
+        activeOrders.forEach(o => {
+            if (o.itemKey) allExcluded.delete(o.itemKey);
+            if (o.items) o.items.forEach(it => allExcluded.delete(it.item));
+        });
+        // Desbloquear también ingredientes intermedios de pedidos y temporada
+        const orderIntermediates = [
+            'moondew_radish', 'waxing_moon_pepper', 'moondew_radish_slices', 'roasted_waxing_moon_pepper',
+            'umbral_sweet_and_spicy_sauce', 'umbral_pickle', 'umbral_hot_pot', 'harvest_platter',
+            'milled_rice', 'rock_candy', 'tofu', 'soy_sauce', 'salted_cherry_blossom', 'sweet_rice_drink',
+            'premium_sweet_rice_wine', 'lemon_incense', 'advanced_lemon_incense', 'rose_incense'
+        ];
+        orderIntermediates.forEach(it => allExcluded.delete(it));
+    }
+
+    return Array.from(allExcluded);
 }
 
 // --- Recipes to skip -------------------------------------------------------------------
@@ -2730,6 +2749,13 @@ function renderProfitBreakdown(plan) {
 // goal-related, since find_plan doesn't need a target). Currency is always coins: the full
 // release removed Bud Tickets, the only other sellable currency.
 function getPlanInputValues() {
+    const activeOrders = typeof getActiveContracts === 'function' ? getActiveContracts() : [];
+    const hasActiveOrders = activeOrders && activeOrders.length > 0;
+    const hasSeasonOrders = hasActiveOrders && activeOrders.some(c => c.isSeason || c.type === 'season');
+    const isSeason = seasonActive() || hasSeasonOrders;
+    // Si hay pedidos activos, las prioridades no deben canibalizar las máquinas ni cultivos de los pedidos
+    const priorities = hasActiveOrders ? [] : activePriorities();
+
     // `facilityTiers` is the live source of truth for owned counts (kept in sync with the DOM by
     // `attachFacilityTierHandlers`), sent straight through as a list of tiers per facility; see
     // `JsPlanInput::facilities` in wasm.rs for the shape (`[{count, level}, ...]` per facility).
@@ -2737,11 +2763,11 @@ function getPlanInputValues() {
         const { facilities, modules } = simpleSetup(selectedHomeLevel());
         return {
             currency: 'coins',
-            priorities: activePriorities(),
+            priorities,
             prioritize_byproducts: false,
             level_up: levelUpInput(),
             exclude: excludedRecipes(),
-            season: seasonActive(),
+            season: isSeason,
             season_currency_per_day: seasonCurrencyPerDay(),
             facilities,
             modules
@@ -2765,11 +2791,11 @@ function getPlanInputValues() {
 
     return {
         currency: 'coins',
-        priorities: activePriorities(),
+        priorities,
         prioritize_byproducts: false,
         level_up: levelUpInput(),
         exclude: excludedRecipes(),
-        season: seasonActive(),
+        season: isSeason,
         season_currency_per_day: seasonCurrencyPerDay(),
         facilities,
         modules
