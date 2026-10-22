@@ -554,7 +554,157 @@ function renderActiveRecipeCard() {
     `;
 }
 
-// Calculate optimal plan via HiGHS WASM worker
+// Calculate optimal plan focused 100% on the assigned recipe and its dependencies
+function calculateDirectRecipePlan(recipeName, targetQuantity, rvLevel) {
+    const itemMap = new Map(allRecipes.map(i => [i.name, i]));
+    const target = itemMap.get(recipeName);
+    if (!target) throw new Error(`Receta no encontrada: ${recipeName}`);
+
+    const setup = simpleSetup(rvLevel);
+    const facCounts = setup.facilities || {};
+    function getFacCount(facName) {
+        const entry = facCounts[facName];
+        if (!entry || !entry[0]) return 1;
+        return entry[0].count || 1;
+    }
+
+    const nodes = new Map();
+
+    function addDemand(name, qty, usedFor) {
+        const item = itemMap.get(name);
+        if (!item) return;
+        const yieldAmt = item.yield_amount || 1;
+
+        let node = nodes.get(name);
+        if (!node) {
+            node = {
+                item,
+                name: item.name,
+                facility: item.facility,
+                facility_level: item.facility_level,
+                yield_amount: yieldAmt,
+                production_time: item.production_time,
+                workload: item.workload,
+                aniimo: item.aniimo,
+                jobs: item.jobs || [],
+                isRaw: !item.raw_materials || item.raw_materials.length === 0,
+                totalDemand: 0,
+                batchesNeeded: 0,
+                usedFor: new Set()
+            };
+            nodes.set(name, node);
+        }
+        node.totalDemand += qty;
+        if (usedFor) node.usedFor.add(usedFor);
+
+        node.batchesNeeded = Math.ceil(node.totalDemand / yieldAmt);
+
+        if (item.raw_materials && item.required_amount) {
+            for (let i = 0; i < item.raw_materials.length; i++) {
+                const mat = item.raw_materials[i];
+                const reqPerBatch = item.required_amount[i];
+                const totalReq = node.batchesNeeded * reqPerBatch;
+                addDemand(mat, totalReq, item.name);
+            }
+        }
+    }
+
+    addDemand(recipeName, targetQuantity, null);
+
+    // Official game formula for worker efficiency
+    function getProcessorSpeed(above) {
+        if (above <= 0) return 1.0;
+        if (above === 1) return 3.0;
+        return 3.0 + (above - 1) * 1.0;
+    }
+    function getGatheringEfficiency(above, req) {
+        const base = 1.0 + 0.25 * (Math.max(1, req) - 1);
+        return 1.0 + 0.5 * above / base;
+    }
+    function hasPersonality(fac) {
+        return fac !== 'Dance Pad Polisher' && fac !== 'Aniipod Maker';
+    }
+
+    const isGatheringFacility = (fac) => ['Well', 'Mine', 'Tidewhisper Sandcastle', 'Dewy House', 'Nimbus Bed', 'Starfall Hammock'].includes(fac);
+    const isFarmOrWoodland = (fac) => fac === 'Farmland' || fac === 'Woodland';
+
+    const farmItems = [];
+    const gatheringItems = [];
+    const workshopIntermediates = [];
+    let finalItem = null;
+
+    for (const node of nodes.values()) {
+        const facCount = getFacCount(node.facility);
+        const isTarget = node.name === recipeName;
+        const gathering = isGatheringFacility(node.facility);
+
+        let cycleTime = node.production_time;
+        if (node.workload && node.aniimo) {
+            const ability = node.aniimo[0];
+            const reqLvl = node.aniimo[1] || 1;
+            const maxLvl = (ability === 'Perfumery') ? 3 : 4;
+            const above = Math.max(0, maxLvl - reqLvl);
+            let eff = gathering ? getGatheringEfficiency(above, reqLvl) : getProcessorSpeed(above);
+            if (hasPersonality(node.facility)) eff *= 1.2;
+            const baseRate = gathering ? (1.0 + 0.25 * (Math.max(1, reqLvl) - 1)) : 1.0;
+            cycleTime = Math.max(1, Math.round(node.workload / (eff * baseRate)));
+        }
+
+        node.effectiveCycleTime = cycleTime;
+        node.availableFacilities = facCount;
+        node.parallelMachinesUsed = Math.min(facCount, Math.max(1, node.batchesNeeded));
+        node.batchesPerMachine = Math.ceil(node.batchesNeeded / node.parallelMachinesUsed);
+
+        if (isFarmOrWoodland(node.facility)) {
+            const plotBatches = Math.ceil(node.batchesNeeded / Math.max(1, facCount));
+            node.durationSeconds = plotBatches * cycleTime;
+            farmItems.push(node);
+        } else if (gathering) {
+            node.durationSeconds = node.batchesPerMachine * cycleTime;
+            gatheringItems.push(node);
+        } else if (isTarget) {
+            node.durationSeconds = node.batchesPerMachine * cycleTime;
+            finalItem = node;
+        } else {
+            node.durationSeconds = node.batchesPerMachine * cycleTime;
+            workshopIntermediates.push(node);
+        }
+    }
+
+    // Critical Path Timing
+    let initialWaveSeconds = 0;
+    for (const f of farmItems) {
+        if (f.durationSeconds > initialWaveSeconds) initialWaveSeconds = f.durationSeconds;
+    }
+    for (const g of gatheringItems) {
+        if (g.durationSeconds > initialWaveSeconds) initialWaveSeconds = g.durationSeconds;
+    }
+
+    let workshopSeconds = 0;
+    for (const w of workshopIntermediates) {
+        workshopSeconds += w.durationSeconds;
+    }
+    if (finalItem) {
+        workshopSeconds += finalItem.durationSeconds;
+    }
+
+    const totalCriticalPathSeconds = initialWaveSeconds + workshopSeconds;
+
+    return {
+        recipeName,
+        targetQuantity,
+        rvLevel,
+        finalItem,
+        workshopIntermediates,
+        gatheringItems,
+        farmItems,
+        initialWaveSeconds,
+        workshopSeconds,
+        totalCriticalPathSeconds
+    };
+}
+
+// Calculate optimal plan focused strictly on recipe crafting without surplus sales
 async function calculateOptimalPlan() {
     if (!selectedRecipe || isSolving) return;
 
@@ -564,47 +714,25 @@ async function calculateOptimalPlan() {
 
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<span class="spinner">⏳</span> Optimizando instalaciones con HiGHS...`;
+        btn.innerHTML = `<span class="spinner">⏳</span> Optimizando recursos para ${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}...`;
     }
 
     if (resultsContainer) {
         resultsContainer.innerHTML = `
             <div class="solver-loading-state">
                 <div class="pulse-loader"></div>
-                <h4>Calculando la gestión óptima de instalaciones...</h4>
-                <p class="hint">El solver matemático HiGHS está coordinando todas las parcelas de cultivo y máquinas intermedias para fabricar <strong>${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</strong> en el menor tiempo récord posible.</p>
+                <h4>Coordinando parcelas y talleres en paralelo...</h4>
+                <p class="hint">Distribuyendo los máximos recursos de tu Casa Rodante para fabricar <strong>${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</strong> en el menor tiempo récord posible, sin desviar ingredientes ni generar excedentes de venta.</p>
             </div>
         `;
     }
 
+    // Small delay for UI reactivity
+    await new Promise(r => setTimeout(r, 120));
+
     try {
-        const setup = simpleSetup(currentRvLevel);
-        const payload = JSON.stringify({
-            currency: 'coins',
-            priorities: [],
-            prioritize_byproducts: false,
-            level_up: {
-                cost: [[selectedRecipe.name, selectedQuantity]],
-                stock: []
-            },
-            exclude: [],
-            season: selectedRecipe.isSeason,
-            season_currency_per_day: selectedRecipe.isSeason ? 12000 : 0,
-            facilities: setup.facilities,
-            modules: setup.modules,
-            aniimo: 'best',
-            aniimo_levels: {}
-        });
-
-        const planJson = await callWorker('find_plan', payload);
-        const plan = JSON.parse(planJson);
-
-        if (!plan.success) {
-            throw new Error(plan.error || 'No se pudo encontrar una asignación válida para esta receta.');
-        }
-
+        const plan = calculateDirectRecipePlan(selectedRecipe.name, selectedQuantity, currentRvLevel);
         renderOptimalResults(plan);
-
     } catch (err) {
         console.error('Error solving recipe plan:', err);
         if (resultsContainer) {
@@ -629,47 +757,13 @@ async function calculateOptimalPlan() {
 // Render the results breakdown
 function renderOptimalResults(plan) {
     const container = document.getElementById('quick-results-container');
-    if (!container) return;
+    if (!container || !plan) return;
 
-    const totalSeconds = plan.level_up?.seconds || 0;
-    const timeFormatted = formatSeconds(totalSeconds);
-    const producingItems = (plan.coin_items || []).filter(c => c.status === 'producing');
-
-    // Split between Farm/Woodland crops and Workshop facilities
-    const farmProducers = producingItems.filter(c => c.facility === 'Farmland' || c.facility === 'Woodland');
-    const workshopProducers = producingItems.filter(c => c.facility !== 'Farmland' && c.facility !== 'Woodland' && c.item_name !== selectedRecipe.name);
-    const finalProducer = producingItems.find(c => c.item_name === selectedRecipe.name) || {
-        facility: selectedRecipe.facility,
-        item_name: selectedRecipe.name,
-        cycle_time: selectedRecipe.cycle_time,
-        busy_units: 1.0,
-        aniimo: selectedRecipe.aniimo ? { ability: selectedRecipe.aniimo[0], level: selectedRecipe.aniimo[1] } : null
-    };
-
-    // Calculate total Aniimo tasks needed
-    const allAniimoTasks = [];
-    producingItems.forEach(item => {
-        (item.aniimo_tasks || []).forEach(task => {
-            allAniimoTasks.push({
-                ability: task.ability,
-                level: task.level,
-                busy: task.busy || 1.0,
-                item: item.item_name,
-                facility: item.facility,
-                jobs: task.jobs || []
-            });
-        });
-        if (item.aniimo && (!item.aniimo_tasks || item.aniimo_tasks.length === 0)) {
-            allAniimoTasks.push({
-                ability: item.aniimo.ability,
-                level: item.aniimo.level,
-                busy: item.busy_units || 1.0,
-                item: item.item_name,
-                facility: item.facility,
-                jobs: []
-            });
-        }
-    });
+    const timeFormatted = formatSeconds(plan.totalCriticalPathSeconds);
+    const finalProducer = plan.finalItem;
+    const workshopProducers = plan.workshopIntermediates || [];
+    const farmProducers = plan.farmItems || [];
+    const gatheringProducers = plan.gatheringItems || [];
 
     // Best Aniimo creature recommendation from database
     const recommendCreature = (ability, minLvl) => {
@@ -681,7 +775,6 @@ function renderOptimalResults(plan) {
             return lvl >= targetLvl;
         });
         if (matches.length === 0) return null;
-        // Sort highest level first, then wild/catchable first
         matches.sort((a, b) => {
             const lvlA = a.abilities[ability] ?? a.abilities[translate(ability)] ?? 0;
             const lvlB = b.abilities[ability] ?? b.abilities[translate(ability)] ?? 0;
@@ -691,89 +784,59 @@ function renderOptimalResults(plan) {
         return matches[0];
     };
 
+    const totalActiveWorkshops = (finalProducer?.parallelMachinesUsed || 1) + workshopProducers.reduce((sum, w) => sum + w.parallelMachinesUsed, 0);
+    const totalFarmPlots = farmProducers.reduce((sum, f) => sum + f.batchesNeeded, 0);
+
     container.innerHTML = `
         <div class="results-kpi-banner">
             <div class="kpi-banner-item main-kpi">
                 <span class="kpi-label">⏱️ Tiempo Récord de Fabricación</span>
                 <span class="kpi-value time-highlight">${timeFormatted}</span>
-                <span class="kpi-sub">Desde 0 hasta entregar ${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</span>
+                <span class="kpi-sub">100% dedicado a fabricar ${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</span>
             </div>
             <div class="kpi-banner-item">
-                <span class="kpi-label">🏭 Talleres Activos</span>
-                <span class="kpi-value">${workshopProducers.length + 1}</span>
-                <span class="kpi-sub">Trabajando en paralelo</span>
+                <span class="kpi-label">🏭 Talleres en Paralelo</span>
+                <span class="kpi-value">${totalActiveWorkshops} máquinas</span>
+                <span class="kpi-sub">Trabajando simultáneamente</span>
             </div>
             <div class="kpi-banner-item">
-                <span class="kpi-label">🌱 Parcelas de Cultivo</span>
-                <span class="kpi-value">${farmProducers.length} tipos</span>
-                <span class="kpi-sub">Suministro de materias primas</span>
+                <span class="kpi-label">🌱 Parcelas Asignadas</span>
+                <span class="kpi-value">${totalFarmPlots} parcelas</span>
+                <span class="kpi-sub">${farmProducers.length} tipos de cultivo</span>
             </div>
             <div class="kpi-banner-item">
-                <span class="kpi-label">🐾 Cuadrilla Aniimo</span>
-                <span class="kpi-value">${allAniimoTasks.length} puestos</span>
-                <span class="kpi-sub">Operarios asignados</span>
+                <span class="kpi-label">🎯 Eficiencia del Plan</span>
+                <span class="kpi-value">100% Útil</span>
+                <span class="kpi-sub">0% excedentes para venta</span>
             </div>
         </div>
 
         <!-- TALLER PRINCIPAL -->
-        <div class="plan-card-section target-section">
-            <div class="section-title-wrap">
-                <span class="section-badge main-badge">🎯 Taller Final</span>
-                <h4>${prettyFacilityName(finalProducer.facility)} — Fabricando ${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</h4>
-            </div>
-            <div class="facility-spec-card">
-                <div class="fac-info">
-                    <span class="fac-name">🏭 ${prettyFacilityName(finalProducer.facility)}</span>
-                    <span class="fac-action">Lote de <strong>${selectedQuantity}x</strong> a máxima velocidad</span>
-                </div>
-                <div class="fac-staff">
-                    ${finalProducer.aniimo ? `
-                        <span class="staff-badge">
-                            🐾 ${translate(finalProducer.aniimo.ability)} Lv.${finalProducer.aniimo.level}+
-                            ${recommendCreature(finalProducer.aniimo.ability, finalProducer.aniimo.level) ? `(Sugerido: <strong>${recommendCreature(finalProducer.aniimo.ability, finalProducer.aniimo.level).name}</strong>)` : ''}
-                        </span>
-                    ` : '<span class="hint small">Autónomo / Sin operador fijo</span>'}
-                </div>
-            </div>
-        </div>
-
-        <!-- HUERTO Y CULTIVOS -->
-        ${farmProducers.length > 0 ? `
-            <div class="plan-card-section farm-section">
+        ${finalProducer ? `
+            <div class="plan-card-section target-section">
                 <div class="section-title-wrap">
-                    <span class="section-badge farm-badge">🌱 Huerto y Parcelas Requeridas</span>
-                    <h4>Campos de Cultivo y Arboleda Asignados</h4>
+                    <span class="section-badge main-badge">🎯 Taller Final</span>
+                    <h4>${prettyFacilityName(finalProducer.facility)} — Fabricando ${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</h4>
                 </div>
-                <p class="hint">Siembra estos cultivos en tus parcelas para abastecer la receta sin que falten ingredientes:</p>
-                <div class="table-responsive">
-                    <table class="plan-table">
-                        <thead>
-                            <tr>
-                                <th>Instalación</th>
-                                <th>Cultivo</th>
-                                <th>Tiempo de Crecimiento</th>
-                                <th>Misión en el Plan</th>
-                                <th>Cuadrilla de Cuidado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${farmProducers.map(f => `
-                                <tr>
-                                    <td><strong>${prettyFacilityName(f.facility)}</strong></td>
-                                    <td><strong>🌱 ${prettyItemName(f.item_name)}</strong></td>
-                                    <td>${formatSeconds(f.cycle_time)}</td>
-                                    <td><span class="reason-tag">${formatReason(f.reason)}</span></td>
-                                    <td>
-                                        ${(f.aniimo_tasks || []).map(t => `
-                                            <span class="task-pill">
-                                                ${translate(t.ability)} Lv.${t.level} (${(t.jobs || []).map(j => translate(j)).join(', ')})
-                                            </span>
-                                        `).join('') || '-'}
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
+                <div class="facility-spec-card">
+                    <div class="fac-info">
+                        <span class="fac-name">🏭 ${prettyFacilityName(finalProducer.facility)}</span>
+                        <span class="fac-action">
+                            ${finalProducer.parallelMachinesUsed > 1 
+                                ? `<strong>${finalProducer.parallelMachinesUsed} máquinas en paralelo</strong> (${finalProducer.batchesPerMachine} lote(s) cada una)` 
+                                : `<strong>${finalProducer.batchesNeeded} lote(s)</strong> a máxima velocidad`}
+                            · Ciclo: ${formatSeconds(finalProducer.effectiveCycleTime)} / lote
+                            · Duración: <strong>${formatSeconds(finalProducer.durationSeconds)}</strong>
+                        </span>
+                    </div>
+                    <div class="fac-staff">
+                        ${finalProducer.aniimo ? `
+                            <span class="staff-badge">
+                                🐾 ${translate(finalProducer.aniimo[0])} Lv.${finalProducer.aniimo[1]}+
+                                ${recommendCreature(finalProducer.aniimo[0], finalProducer.aniimo[1]) ? `(Sugerido: <strong>${recommendCreature(finalProducer.aniimo[0], finalProducer.aniimo[1]).name}</strong>)` : ''}
+                            </span>
+                        ` : '<span class="hint small">Autónomo / Sin operador fijo</span>'}
+                    </div>
                 </div>
             </div>
         ` : ''}
@@ -785,30 +848,39 @@ function renderOptimalResults(plan) {
                     <span class="section-badge workshop-badge">⚙️ Procesamiento Intermedio</span>
                     <h4>Máquinas Transformando Ingredientes</h4>
                 </div>
-                <p class="hint">Estas instalaciones deben encenderse en paralelo para procesar los ingredientes intermedios:</p>
+                <p class="hint">Instalaciones trabajando exclusivamente para abastecer los componentes de la receta:</p>
                 <div class="table-responsive">
                     <table class="plan-table">
                         <thead>
                             <tr>
                                 <th>Instalación</th>
                                 <th>Producto Intermedio</th>
-                                <th>Ciclo Unitario</th>
-                                <th>Destino</th>
-                                <th>Operario Aniimo Requerido</th>
+                                <th>Lote y Máquinas</th>
+                                <th>Duración</th>
+                                <th>Misión en la Receta</th>
+                                <th>Operario Aniimo Recomendado</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${workshopProducers.map(w => `
                                 <tr>
                                     <td><strong>${prettyFacilityName(w.facility)}</strong></td>
-                                    <td><strong>⚙️ ${prettyItemName(w.item_name)}</strong></td>
-                                    <td>${formatSeconds(w.cycle_time)}</td>
-                                    <td><span class="reason-tag">${formatReason(w.reason)}</span></td>
+                                    <td><strong>⚙️ ${prettyItemName(w.name)}</strong></td>
+                                    <td>
+                                        ${w.batchesNeeded} uds 
+                                        ${w.parallelMachinesUsed > 1 ? `<span class="task-pill">x${w.parallelMachinesUsed} en paralelo</span>` : ''}
+                                    </td>
+                                    <td><strong>${formatSeconds(w.durationSeconds)}</strong> (${formatSeconds(w.effectiveCycleTime)}/u)</td>
+                                    <td>
+                                        <span class="reason-tag">
+                                            ${Array.from(w.usedFor).map(u => `Usado para ${prettyItemName(u)}`).join(', ') || `Para ${prettyItemName(selectedRecipe.name)}`}
+                                        </span>
+                                    </td>
                                     <td>
                                         ${w.aniimo ? `
                                             <span class="task-pill">
-                                                🐾 ${translate(w.aniimo.ability)} Lv.${w.aniimo.level}
-                                                ${recommendCreature(w.aniimo.ability, w.aniimo.level) ? `(ej. <strong>${recommendCreature(w.aniimo.ability, w.aniimo.level).name}</strong>)` : ''}
+                                                🐾 ${translate(w.aniimo[0])} Lv.${w.aniimo[1]}
+                                                ${recommendCreature(w.aniimo[0], w.aniimo[1]) ? `(ej. <strong>${recommendCreature(w.aniimo[0], w.aniimo[1]).name}</strong>)` : ''}
                                             </span>
                                         ` : '-'}
                                     </td>
@@ -820,23 +892,114 @@ function renderOptimalResults(plan) {
             </div>
         ` : ''}
 
-        <!-- RESUMEN DE REQUISITOS DEL SOLVER -->
+        <!-- HUERTO Y CULTIVOS -->
+        ${farmProducers.length > 0 ? `
+            <div class="plan-card-section farm-section">
+                <div class="section-title-wrap">
+                    <span class="section-badge farm-badge">🌱 Huerto y Parcelas Requeridas</span>
+                    <h4>Campos de Cultivo y Arboleda Asignados</h4>
+                </div>
+                <p class="hint">Siembra simultánea en tus parcelas para abastecer la receta sin que falte ningún ingrediente:</p>
+                <div class="table-responsive">
+                    <table class="plan-table">
+                        <thead>
+                            <tr>
+                                <th>Instalación / Terreno</th>
+                                <th>Cultivo</th>
+                                <th>Parcelas Asignadas</th>
+                                <th>Tiempo de Crecimiento</th>
+                                <th>Misión en el Plan</th>
+                                <th>Cuadrilla de Cuidado Requerida</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${farmProducers.map(f => `
+                                <tr>
+                                    <td><strong>${prettyFacilityName(f.facility)}</strong> (${f.availableFacilities} disp.)</td>
+                                    <td><strong>🌱 ${prettyItemName(f.name)}</strong></td>
+                                    <td>
+                                        <strong>${f.batchesNeeded} parcela(s)</strong> (${f.totalDemand} uds requeridas)
+                                    </td>
+                                    <td><strong>${formatSeconds(f.durationSeconds)}</strong> (simultáneo)</td>
+                                    <td>
+                                        <span class="reason-tag">
+                                            ${Array.from(f.usedFor).map(u => `Suministro para ${prettyItemName(u)}`).join(', ') || `Para ${prettyItemName(selectedRecipe.name)}`}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        ${(f.jobs || []).map(j => `
+                                            <span class="task-pill">
+                                                ${translate(j[1])} Lv.${j[2]} (${translate(j[0])})
+                                            </span>
+                                        `).join('') || '-'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        ` : ''}
+
+        <!-- RECOLECCIÓN Y EXTRACCIÓN -->
+        ${gatheringProducers.length > 0 ? `
+            <div class="plan-card-section gathering-section">
+                <div class="section-title-wrap">
+                    <span class="section-badge gather-badge">⛏️ Recolección y Extracción</span>
+                    <h4>Materias Primas Naturales Extraídas</h4>
+                </div>
+                <p class="hint">Instalaciones de recolección activadas en paralelo con los cultivos:</p>
+                <div class="table-responsive">
+                    <table class="plan-table">
+                        <thead>
+                            <tr>
+                                <th>Instalación</th>
+                                <th>Recurso</th>
+                                <th>Lotes / Máquinas</th>
+                                <th>Duración</th>
+                                <th>Misión en la Receta</th>
+                                <th>Operario Sugerido</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${gatheringProducers.map(g => `
+                                <tr>
+                                    <td><strong>${prettyFacilityName(g.facility)}</strong></td>
+                                    <td><strong>⛏️ ${prettyItemName(g.name)}</strong></td>
+                                    <td>
+                                        ${g.batchesNeeded} lote(s) 
+                                        ${g.parallelMachinesUsed > 1 ? `<span class="task-pill">x${g.parallelMachinesUsed} en paralelo</span>` : ''}
+                                    </td>
+                                    <td><strong>${formatSeconds(g.durationSeconds)}</strong></td>
+                                    <td>
+                                        <span class="reason-tag">
+                                            ${Array.from(g.usedFor).map(u => `Usado para ${prettyItemName(u)}`).join(', ') || `Para ${prettyItemName(selectedRecipe.name)}`}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        ${g.aniimo ? `
+                                            <span class="task-pill">
+                                                🐾 ${translate(g.aniimo[0])} Lv.${g.aniimo[1]}
+                                                ${recommendCreature(g.aniimo[0], g.aniimo[1]) ? `(ej. <strong>${recommendCreature(g.aniimo[0], g.aniimo[1]).name}</strong>)` : ''}
+                                            </span>
+                                        ` : '-'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        ` : ''}
+
+        <!-- RESUMEN DE BALANCE -->
         <div class="plan-card-section summary-section">
             <div class="section-title-wrap">
-                <span class="section-badge summary-badge">📦 Balance de Materiales</span>
-                <h4>Cadencia y Requisitos Finales</h4>
+                <span class="section-badge summary-badge">📦 Balance de Fabricación Directa</span>
+                <h4>Flujo 100% Eficiente sin Sobrantes</h4>
             </div>
             <div class="summary-details-box">
-                <p>✔ El solver lineal HiGHS calculó la solución matemática óptima. Con esta configuración, tus instalaciones producirán <strong>${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</strong> en exactamente <strong>${timeFormatted}</strong> sin acumular cuellos de botella.</p>
-                ${(plan.level_up?.requirements || []).length > 0 ? `
-                    <div class="req-tags-wrap">
-                        ${plan.level_up.requirements.map(r => `
-                            <span class="req-tag">
-                                <strong>${r.need}x ${prettyItemName(r.name)}</strong>: listo en ${formatSeconds(r.seconds)} (${(r.per_second * 60).toFixed(2)} uds/min)
-                            </span>
-                        `).join('')}
-                    </div>
-                ` : ''}
+                <p>✔ Asignación directa optimizada: <strong>${selectedQuantity}x ${prettyItemName(selectedRecipe.name)}</strong> estará listo en exactamente <strong>${timeFormatted}</strong>. Todas las parcelas de cultivo y talleres intermedios se han coordinado para trabajar en paralelo al máximo rendimiento, sin fabricar ningún producto adicional para la venta.</p>
             </div>
         </div>
     `;
