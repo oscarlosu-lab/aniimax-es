@@ -1,0 +1,10 @@
+name: Feature Request
+description: Suggest an improvement for aniimax-es
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Feature
+    validations:
+      required: true
