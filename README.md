@@ -1,5 +1,10 @@
 # Aniimaster (Aniimax ES) — Optimizador de Base, Calculadora de Tierra Natal y Recomendador de Aniimos
 
+[![License](https://img.shields.io/badge/License-Non--Commercial%20(oscarlosu--lab)%20%2B%20Upstream%20MIT-f59e0b?style=flat-square)](LICENSE)
+[![GitHub Pages](https://img.shields.io/github/deployments/oscarlosu-lab/aniimax-es/github-pages?label=GitHub%20Pages&style=flat-square&logo=github)](https://oscarlosu-lab.github.io/aniimax-es/)
+[![Last Commit](https://img.shields.io/github/last-commit/oscarlosu-lab/aniimax-es?style=flat-square&color=10b981)](https://github.com/oscarlosu-lab/aniimax-es/commits/main)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/oscarlosu)
+
 [![Probar Online](https://img.shields.io/badge/Demo%20Online-oscarlosu--lab.github.io-00f0ff?style=for-the-badge&logo=githubpages&logoColor=white)](https://oscarlosu-lab.github.io/aniimax-es/)
 [![Licencia MIT](https://img.shields.io/badge/Licencia-MIT-22c55e.svg?style=for-the-badge)](LICENSE)
 [![Versión 2.2 Pro](https://img.shields.io/badge/Versi%C3%B3n-2.2%20Pro-a855f7.svg?style=for-the-badge)]()
@@ -164,3 +169,7 @@ wasm-pack build --target web --out-dir web/pkg
 ## 📄 Licencia
 
 Este proyecto se distribuye bajo la licencia **MIT** de código abierto. Consulta el archivo [LICENSE](LICENSE) para más información.
+
+## License
+
+oscarlosu-lab contributions & adaptations are under **Non-Commercial Source-Available + Mandatory Attribution**; upstream components remain under **MIT**. See [LICENSE](LICENSE).
